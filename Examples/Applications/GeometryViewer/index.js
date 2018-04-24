@@ -197,13 +197,24 @@ function createPipeline(fileName, fileContents) {
 
   const lookupTable = vtkColorTransferFunction.newInstance();
   const source = vtpReader.getOutputData(0);
+  const source2 = vtpReader.getOutputData(1);
+
   const mapper = vtkMapper.newInstance({
     interpolateScalarsBeforeMapping: false,
     useLookupTableScalarRange: true,
     lookupTable,
     scalarVisibility: false,
   });
+
+  const mapper2 = vtkMapper.newInstance({
+    interpolateScalarsBeforeMapping: false,
+    useLookupTableScalarRange: true,
+    lookupTable,
+    scalarVisibility: false,
+  });
+
   const actor = vtkActor.newInstance();
+  const actor2 = vtkActor.newInstance();
   const scalars = source.getPointData().getScalars();
   const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
 
@@ -349,7 +360,12 @@ function createPipeline(fileName, fileContents) {
 
   actor.setMapper(mapper);
   mapper.setInputData(source);
+
+  actor2.setMapper(mapper2);
+  mapper2.setInputData(source2);
+
   renderer.addActor(actor);
+  renderer.addActor(actor2);
 
   // Manage update when lookupTable change
   lookupTable.onModified(() => {
