@@ -1,7 +1,7 @@
 {
-  "name": "vtk.js",
-  "version": "0.0.0-semantically-release",
-  "description": "Visualization Toolkit for the Web",
+  "name": "@dhigroup/vtk.js-fork",
+  "version": "1.0.0",
+  "description": "For of vtk.js for experimentation - Visualization Toolkit for the Web",
   "keywords": [
     "3d",
     "visualization",
