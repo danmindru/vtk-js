@@ -365,7 +365,8 @@ function createPipeline(fileName, fileContents) {
   mapper2.setInputData(source2);
 
   renderer.addActor(actor);
-  renderer.addActor(actor2);
+  console.log('Could add', actor2);
+  // renderer.addActor(actor2);
 
   // Manage update when lookupTable change
   lookupTable.onModified(() => {

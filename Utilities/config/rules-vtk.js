@@ -34,7 +34,7 @@ module.exports = [
     ],
   },
   {
-    test: /\.svg$/,
+    test: /\.(svg|txt)$/,
     use: [{ loader: 'raw-loader' }],
   },
   {

@@ -11,7 +11,7 @@ import vtkTexture from 'vtk.js/Sources/Rendering/Core/Texture';
 // ----------------------------------------------------------------------------
 
 const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
-  background: [0, 0, 0],
+  background: [1, 1, 1],
 });
 const renderer = fullScreenRenderer.getRenderer();
 const renderWindow = fullScreenRenderer.getRenderWindow();
@@ -47,11 +47,60 @@ img.onload = function textureLoaded() {
 img.src = `${__BASE_PATH__}/data/elevation/dem.jpg`;
 
 // Download elevation and render when ready
-reader.setUrl(`${__BASE_PATH__}/data/elevation/dem.csv`).then(() => {
+reader.setUrl(`${__BASE_PATH__}/data/elevation/dem.csv`).then((a) => {
   renderer.resetCamera();
   renderWindow.render();
 });
 
+function loadMesh() {
+  const reader2 = vtkElevationReader.newInstance({
+    xSpacing: 0.01568,
+    ySpacing: 0.01568,
+    zScaling: 0.06666,
+  });
+  const mapper2 = vtkMapper.newInstance();
+  const actor2 = vtkActor.newInstance();
+
+  mapper2.setInputConnection(reader2.getOutputPort());
+  actor2.setMapper(mapper2);
+
+  renderer.addActor(actor2);
+  renderWindow.render();
+
+  reader2.setUrl(`${__BASE_PATH__}/data/elevation/dem.csv`).then((a) => {
+    renderer
+      .getActors()[1]
+      .getProperty()
+      .setRepresentation(1);
+
+    renderWindow.render();
+  });
+}
+
+const button = document.createElement('button');
+button.innerText = 'Show mesh';
+button.style.cssText = `
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 2;
+`;
+button.addEventListener('click', () => {
+  loadMesh();
+});
+
+const topbar = document.createElement('img');
+topbar.src = `${__BASE_PATH__}/data/elevation/topbar.png`;
+topbar.style.cssText = `
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  z-index: 2;
+`;
+
+document.querySelector('body').appendChild(topbar);
+document.querySelector('body').appendChild(button);
 // -----------------------------------------------------------
 // Make some variables global so that you can inspect and
 // modify objects in your browser's developer console:
