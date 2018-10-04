@@ -26,7 +26,6 @@ const widget = vtkLineWidget.newInstance();
 widget.setInteractor(renderWindow.getInteractor());
 widget.setEnabled(1);
 widget.setWidgetStateToStart();
-// widget.setWidgetStateToManipulate();
 
 renderer.resetCamera();
 renderer.resetCameraClippingRange();

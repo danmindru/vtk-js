@@ -20,12 +20,16 @@ export default function addRegistrationAPI(publicAPI, model) {
       model.proxyByGroup[group].push(proxy);
     }
     proxy.setProxyManager(publicAPI);
-    publicAPI.invokeProxyRegistrationChange({
-      action: 'register',
-      proxyId: proxy.getProxyId(),
-      proxyName: proxy.getProxyName(),
-      proxyGroup: proxy.getProxyGroup(),
-      proxy,
+
+    // Make sure we invoke event after the current execution path
+    setImmediate(() => {
+      publicAPI.invokeProxyRegistrationChange({
+        action: 'register',
+        proxyId: proxy.getProxyId(),
+        proxyName: proxy.getProxyName(),
+        proxyGroup: proxy.getProxyGroup(),
+        proxy,
+      });
     });
   }
 
@@ -45,6 +49,8 @@ export default function addRegistrationAPI(publicAPI, model) {
     });
 
     delete model.proxyIdMapping[id];
+    proxy.gcPropertyLinks('application');
+    proxy.gcPropertyLinks('source');
     proxy.setProxyManager(null);
     publicAPI.invokeProxyRegistrationChange({
       action: 'unregister',
@@ -188,10 +194,12 @@ export default function addRegistrationAPI(publicAPI, model) {
         definition.name,
         definition.options
       );
-      rep.setInput(sourceToUse);
-      viewToUse.addRepresentation(rep);
+
       model.r2svMapping[rep.getProxyId()] = { sourceId, viewId };
       viewRepMap[viewId] = rep;
+
+      rep.setInput(sourceToUse);
+      viewToUse.addRepresentation(rep);
     }
     return rep;
   };

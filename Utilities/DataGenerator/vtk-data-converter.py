@@ -1,7 +1,12 @@
+from __future__ import print_function
 import sys, json, os, math, gzip, shutil, argparse, hashlib
 
 from paraview import simple
 from paraview.vtk import *
+import sys
+
+if sys.version_info[0] == 3:
+    buffer = memoryview
 
 # -----------------------------------------------------------------------------
 
@@ -133,6 +138,9 @@ def dumpAttributes(datasetDir, dataDir, dataset, root = {}, compress = True):
     if array:
       _array = dumpDataArray(datasetDir, dataDir, array, {}, compress)
       if _array:
+        if (root['vtkClass'] == 'vtkImageData'):
+          _array['ref']['registration']="setScalars"
+
         _pointData['arrays'].append({ "data": _array })
     elif abstractArray:
       _array = dumpStringArray(datasetDir, dataDir, abstractArray, {}, compress)
@@ -337,7 +345,7 @@ def writeDataSet(filePath, dataset, outputDir, newDSName = None, compress = True
   if writer:
     writer(datasetDir, dataDir, dataset, root, compress)
   else:
-    print dataObject.GetClassName(), 'is not supported'
+    print (dataObject.GetClassName(), 'is not supported')
 
   with open(os.path.join(datasetDir, "index.json"), 'w') as f:
     f.write(json.dumps(root, indent=2))
@@ -374,7 +382,7 @@ def writeTimeDataSource(filePath, datasource, sourceToExport, outputDir, newDSNa
       with open(dsFileName, 'w') as f:
         f.write(json.dumps(writer(dsDir, dataDir, ds, {}, compress), indent=2))
     else:
-      print dataObject.GetClassName(), 'is not supported'
+      print (dataObject.GetClassName(), 'is not supported')
 
 
   with open(os.path.join(datasetDir, "index.json"), 'w') as f:
@@ -383,7 +391,7 @@ def writeTimeDataSource(filePath, datasource, sourceToExport, outputDir, newDSNa
 # -----------------------------------------------------------------------------
 
 def convert(inputFile, outputDir, merge = False, extract = False, newName = None):
-  print inputFile, outputDir
+  print (inputFile, outputDir)
   reader = simple.OpenDataFile(inputFile)
   activeSource = reader
 
@@ -451,4 +459,3 @@ if __name__ == "__main__":
       sample(args.sample, args.output)
     else:
       convert(args.input, args.output, args.merge, args.extract)
-

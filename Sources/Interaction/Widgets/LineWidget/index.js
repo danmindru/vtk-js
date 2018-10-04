@@ -31,6 +31,19 @@ function vtkLineWidget(publicAPI, model) {
     }
   }
 
+  publicAPI.setCurrentHandle = (value) => {
+    model.currentHandle = value;
+  };
+
+  publicAPI.setInteractor = (i) => {
+    superClass.setInteractor(i);
+
+    model.point1Widget.setInteractor(model.interactor);
+    model.point2Widget.setInteractor(model.interactor);
+
+    publicAPI.modified();
+  };
+
   publicAPI.setEnabled = (enabling) => {
     superClass.setEnabled(enabling);
 
@@ -43,8 +56,6 @@ function vtkLineWidget(publicAPI, model) {
     // interactor below
     model.point1Widget.setWidgetRep(model.widgetRep.getPoint1Representation());
     model.point2Widget.setWidgetRep(model.widgetRep.getPoint2Representation());
-    model.point1Widget.setInteractor(model.interactor);
-    model.point2Widget.setInteractor(model.interactor);
 
     if (model.widgetState === WidgetState.START) {
       model.point1Widget.setEnabled(0);
@@ -63,13 +74,13 @@ function vtkLineWidget(publicAPI, model) {
 
   publicAPI.setWidgetStateToStart = () => {
     model.widgetState = WidgetState.START;
-    model.currentHandle = 0;
+    publicAPI.setCurrentHandle(0);
     publicAPI.setEnabled(model.enabled);
   };
 
   publicAPI.setWidgetStateToManipulate = () => {
     model.widgetState = WidgetState.MANIPULATE;
-    model.currentHandle = -1;
+    publicAPI.setCurrentHandle(-1);
     publicAPI.setEnabled(model.enabled);
   };
 
@@ -108,13 +119,15 @@ function vtkLineWidget(publicAPI, model) {
         // If the line has a zero length, it appears with bad extremities
         pos3D[0] += 0.000000001;
         model.widgetRep.setPoint2WorldPosition(pos3D);
-        model.currentHandle++;
+
+        publicAPI.setCurrentHandle(model.currentHandle + 1);
       } else {
         model.widgetRep.setPoint2Visibility(1);
         model.widgetRep.setPoint2WorldPosition(pos3D);
         // When two points are placed, we go back to the native
         model.widgetState = WidgetState.MANIPULATE;
-        model.currentHandle = -1;
+
+        publicAPI.setCurrentHandle(-1);
       }
     } else {
       const state = model.widgetRep.computeInteractionState(position);
@@ -156,23 +169,24 @@ function vtkLineWidget(publicAPI, model) {
 
   publicAPI.moveAction = (callData) => {
     const position = [callData.position.x, callData.position.y];
+    let modified = false;
 
     if (model.widgetState === WidgetState.MANIPULATE) {
       // In MANIPULATE, we are hovering above the widget
       // Check if above a sphere and enable/disable if needed
       const state = model.widgetRep.computeInteractionState(position);
       setCursor(state);
-      if (state !== State.OUTSIDE) {
-        if (state === State.ONP1) {
-          model.point1Widget.setEnabled(1);
-          model.point2Widget.setEnabled(0);
-        } else if (state === State.ONP2) {
-          model.point1Widget.setEnabled(0);
-          model.point2Widget.setEnabled(1);
-        }
-      } else {
-        model.point1Widget.setEnabled(0);
-        model.point2Widget.setEnabled(0);
+
+      const enablePoint1Widget = state === State.ONP1;
+      const enablePoint2Widget = state === State.ONP2;
+
+      if (enablePoint1Widget !== model.point1Widget.getEnabled()) {
+        model.point1Widget.setEnabled(enablePoint1Widget);
+        modified = true;
+      }
+      if (enablePoint2Widget !== model.point2Widget.getEnabled()) {
+        model.point2Widget.setEnabled(enablePoint2Widget);
+        modified = true;
       }
     } else if (model.widgetState === WidgetState.START) {
       // In START, we are placing the sphere widgets.
@@ -186,6 +200,7 @@ function vtkLineWidget(publicAPI, model) {
       } else {
         model.widgetRep.setPoint2WorldPosition(pos3D);
       }
+      modified = true;
     } else if (model.widgetState === WidgetState.ACTIVE) {
       // In ACTIVE, we are moving a sphere widget.
       // Update the line extremities to follow the spheres.
@@ -195,10 +210,13 @@ function vtkLineWidget(publicAPI, model) {
       model.widgetRep.setPoint2WorldPosition(
         model.point2Widget.getWidgetRep().getWorldPosition()
       );
+      modified = true;
     }
 
-    publicAPI.invokeInteractionEvent();
-    publicAPI.render();
+    if (modified) {
+      publicAPI.invokeInteractionEvent();
+      publicAPI.render();
+    }
   };
 
   publicAPI.endSelectAction = (callData) => {
@@ -233,7 +251,7 @@ function vtkLineWidget(publicAPI, model) {
 const DEFAULT_VALUES = {
   widgetState: WidgetState.START,
   managesCursor: 1,
-  currentHandle: -1,
+  currentHandle: 0,
   point1Widget: null,
   point2Widget: null,
 };

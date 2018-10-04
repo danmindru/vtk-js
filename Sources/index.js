@@ -5,8 +5,9 @@ import Interaction from './Interaction';
 import IO from './IO';
 import Rendering from './Rendering';
 import VTKProxy from './Proxy';
+import Widgets from './Widgets';
 
-import { getCurrentGlobalMTime } from './macro';
+import macro from './macro';
 
 import vtk from './vtk';
 
@@ -15,10 +16,13 @@ vtk.Filters = Filters;
 vtk.Imaging = Imaging;
 vtk.Interaction = Interaction;
 vtk.IO = IO;
-vtk.Rendering = Rendering;
 vtk.Proxy = VTKProxy;
+vtk.Rendering = Rendering;
+vtk.Widgets = Widgets;
 
-vtk.mtime = getCurrentGlobalMTime;
+vtk.mtime = macro.getCurrentGlobalMTime;
+vtk.macro = macro;
 
-/* eslint-disable */
-module.exports = vtk;
+// Expose vtk to global scope without exporting it so nested namespace
+// do not pollute the global one.
+window.vtk = vtk;

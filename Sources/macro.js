@@ -68,6 +68,14 @@ export function vtkWarningMacro(...args) {
   loggerFunctions.warn(...args);
 }
 
+const ERROR_ONCE_MAP = {};
+export function vtkOnceErrorMacro(str) {
+  if (!ERROR_ONCE_MAP[str]) {
+    loggerFunctions.error(str);
+    ERROR_ONCE_MAP[str] = true;
+  }
+}
+
 // ----------------------------------------------------------------------------
 // TypedArray
 // ----------------------------------------------------------------------------
@@ -227,7 +235,7 @@ export function obj(publicAPI = {}, model = {}) {
     let ret = false;
     Object.keys(map).forEach((name) => {
       const fn = noFunction ? null : publicAPI[`set${capitalize(name)}`];
-      if (fn && Array.isArray(map[name])) {
+      if (fn && Array.isArray(map[name]) && fn.length > 1) {
         ret = fn(...map[name]) || ret;
       } else if (fn) {
         ret = fn(map[name]) || ret;
@@ -570,10 +578,11 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
       return;
     }
     if (port >= model.numberOfInputs) {
-      let msg = `algorithm ${publicAPI.getClassName()} only has `;
-      msg += `${model.numberOfInputs}`;
-      msg += ' input ports. To add more input ports, use addInputData()';
-      vtkErrorMacro(msg);
+      vtkErrorMacro(
+        `algorithm ${publicAPI.getClassName()} only has ${
+          model.numberOfInputs
+        } input ports. To add more input ports, use addInputData()`
+      );
       return;
     }
     if (model.inputData[port] !== dataset || model.inputConnection[port]) {
@@ -837,6 +846,7 @@ export function newInstance(extend, className) {
     const model = {};
     const publicAPI = {};
     extend(publicAPI, model, initialValues);
+
     return Object.freeze(publicAPI);
   };
 
@@ -1116,6 +1126,10 @@ export function proxy(publicAPI, model) {
         } else {
           needUpdate.push(link);
         }
+      }
+
+      if (!sourceLink) {
+        return null;
       }
 
       const newValue = sourceLink.instance[
@@ -1579,6 +1593,7 @@ export default {
   traverseInstanceTree,
   vtkDebugMacro,
   vtkErrorMacro,
+  vtkOnceErrorMacro,
   vtkInfoMacro,
   vtkLogMacro,
   vtkWarningMacro,

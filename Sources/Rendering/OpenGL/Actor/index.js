@@ -17,6 +17,9 @@ function vtkOpenGLActor(publicAPI, model) {
       model.openGLRenderWindow = publicAPI.getFirstAncestorOfType(
         'vtkOpenGLRenderWindow'
       );
+      model.openGLRenderer = publicAPI.getFirstAncestorOfType(
+        'vtkOpenGLRenderer'
+      );
       model.context = model.openGLRenderWindow.getContext();
       publicAPI.prepareNodes();
       publicAPI.addMissingNodes(model.renderable.getTextures());
@@ -49,7 +52,8 @@ function vtkOpenGLActor(publicAPI, model) {
     if (
       !model.renderable ||
       !model.renderable.getVisibility() ||
-      !model.renderable.getIsOpaque()
+      !model.renderable.getIsOpaque() ||
+      (model.openGLRenderer.getSelector() && !model.renderable.getPickable())
     ) {
       return;
     }
@@ -66,7 +70,8 @@ function vtkOpenGLActor(publicAPI, model) {
     if (
       !model.renderable ||
       !model.renderable.getVisibility() ||
-      model.renderable.getIsOpaque()
+      model.renderable.getIsOpaque() ||
+      (model.openGLRenderer.getSelector() && !model.renderable.getPickable())
     ) {
       return;
     }
@@ -145,6 +150,10 @@ function vtkOpenGLActor(publicAPI, model) {
       } else {
         mat3.fromMat4(model.keyMatrices.normalMatrix, model.keyMatrices.mcwc);
         mat3.invert(
+          model.keyMatrices.normalMatrix,
+          model.keyMatrices.normalMatrix
+        );
+        mat3.transpose(
           model.keyMatrices.normalMatrix,
           model.keyMatrices.normalMatrix
         );

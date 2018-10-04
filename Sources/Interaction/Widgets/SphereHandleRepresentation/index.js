@@ -170,19 +170,16 @@ function vtkSphereHandleRepresentation(publicAPI, model) {
     );
 
   publicAPI.complexWidgetInteraction = (eventPos) => {
-    const focalPoint = vtkInteractorObserver.computeDisplayToWorld(
+    const focalPoint = vtkInteractorObserver.computeWorldToDisplay(
       model.renderer,
       model.lastPickPosition[0],
       model.lastPickPosition[1],
       model.lastPickPosition[2]
     );
+
     const z = focalPoint[2];
-    const prevPickPoint = vtkInteractorObserver.computeDisplayToWorld(
-      model.renderer,
-      model.lastEventPosition[0],
-      model.lastEventPosition[1],
-      z
-    );
+
+    const prevPickPoint = publicAPI.displayToWorld(model.lastEventPosition, z);
     const pickPoint = publicAPI.displayToWorld(eventPos, z);
 
     if (
@@ -298,9 +295,9 @@ function vtkSphereHandleRepresentation(publicAPI, model) {
 
   publicAPI.highlight = (highlight) => {
     if (highlight) {
-      model.actor.setProperty(model.selectProperty);
+      publicAPI.applyProperty(model.selectProperty);
     } else {
-      model.actor.setProperty(model.property);
+      publicAPI.applyProperty(model.property);
     }
   };
 
@@ -317,7 +314,7 @@ function vtkSphereHandleRepresentation(publicAPI, model) {
     }
   };
 
-  publicAPI.setProperty = (property) => {
+  publicAPI.applyProperty = (property) => {
     model.actor.setProperty(property);
   };
 }
@@ -350,7 +347,11 @@ export function extend(publicAPI, model, initialValues = {}) {
   // Inheritance
   vtkHandleRepresentation.extend(publicAPI, model, initialValues);
 
-  macro.setGet(publicAPI, model, ['translationMode']);
+  macro.setGet(publicAPI, model, [
+    'translationMode',
+    'property',
+    'selectProperty',
+  ]);
   macro.get(publicAPI, model, ['actor']);
 
   model.sphere = vtkSphereSource.newInstance();

@@ -125,7 +125,6 @@ function vtkAbstractRepresentationProxy(publicAPI, model) {
     let colorMode = vtkMapper.ColorMode.DEFAULT;
     let scalarMode = vtkMapper.ScalarMode.DEFAULT;
     const colorByArrayName = arrayName;
-    const interpolateScalarsBeforeMapping = arrayLocation === 'pointData';
     const activeArray = publicAPI.getDataArray(arrayName, arrayLocation);
     const scalarVisibility = !!activeArray;
     const lookupTable = arrayName
@@ -148,7 +147,9 @@ function vtkAbstractRepresentationProxy(publicAPI, model) {
           ? vtkMapper.ScalarMode.USE_POINT_FIELD_DATA
           : vtkMapper.ScalarMode.USE_CELL_FIELD_DATA;
 
-      model.mapper.setLookupTable(lookupTable);
+      if (model.mapper.setLookupTable) {
+        model.mapper.setLookupTable(lookupTable);
+      }
       publicAPI.rescaleTransferFunctionToDataRange(
         arrayName,
         arrayLocation,
@@ -156,13 +157,16 @@ function vtkAbstractRepresentationProxy(publicAPI, model) {
       );
     }
 
-    model.mapper.set({
-      colorByArrayName,
-      colorMode,
-      interpolateScalarsBeforeMapping,
-      scalarMode,
-      scalarVisibility,
-    });
+    // Not all mappers have those fields
+    model.mapper.set(
+      {
+        colorByArrayName,
+        colorMode,
+        scalarMode,
+        scalarVisibility,
+      },
+      true
+    );
   };
 
   publicAPI.getColorBy = () => {

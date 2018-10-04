@@ -72,6 +72,9 @@ function vtkOpenGLStickMapper(publicAPI, model) {
     if (model.context.getExtension('EXT_frag_depth')) {
       fragString = '  gl_FragDepthEXT = (pos.z / pos.w + 1.0) / 2.0;\n';
     }
+    if (model.openGLRenderWindow.getWebgl2()) {
+      fragString = 'gl_FragDepth = (pos.z / pos.w + 1.0) / 2.0;\n';
+    }
     // see https://www.cl.cam.ac.uk/teaching/1999/AGraphHCI/SMAG/node2.html
     FSSource = vtkShaderProgram.substitute(FSSource, '//VTK::Depth::Impl', [
       // compute the eye position and unit direction
@@ -149,57 +152,6 @@ function vtkOpenGLStickMapper(publicAPI, model) {
     FSSource = vtkShaderProgram.substitute(FSSource, '//VTK::Normal::Impl', '')
       .result;
 
-    const selector = ren.getSelector();
-    const picking = false; // (ren.getRenderWindow().getIsPicking() || selector != null);
-    fragString = '';
-    if (picking) {
-      if (
-        !selector /* ||
-          (this->LastSelectionState >= vtkHardwareSelector::ID_LOW24) */
-      ) {
-        VSSource = vtkShaderProgram.substitute(
-          VSSource,
-          '//VTK::Picking::Dec',
-          ['attribute vec4 selectionId;\n', 'varying vec4 selectionIdVSOutput;']
-        ).result;
-        VSSource = vtkShaderProgram.substitute(
-          VSSource,
-          '//VTK::Picking::Impl',
-          'selectionIdVSOutput = selectionId;'
-        ).result;
-        FSSource = vtkShaderProgram.substitute(
-          FSSource,
-          '//VTK::Picking::Dec',
-          'varying vec4 selectionIdVSOutput;'
-        ).result;
-
-        if (model.context.getExtension('EXT_frag_depth')) {
-          fragString =
-            '    gl_FragData[0] = vec4(selectionIdVSOutput.rgb, 1.0);\n';
-        }
-        FSSource = vtkShaderProgram.substitute(
-          FSSource,
-          '//VTK::Picking::Impl',
-          fragString
-        ).result;
-      } else {
-        FSSource = vtkShaderProgram.substitute(
-          FSSource,
-          '//VTK::Picking::Dec',
-          'uniform vec3 mapperIndex;'
-        ).result;
-
-        if (model.context.getExtension('EXT_frag_depth')) {
-          fragString = '  gl_FragData[0] = vec4(mapperIndex,1.0);\n';
-        }
-        FSSource = vtkShaderProgram.substitute(
-          FSSource,
-          '//VTK::Picking::Impl',
-          fragString
-        ).result;
-      }
-    }
-
     if (model.haveSeenDepthRequest) {
       // special depth impl
       FSSource = vtkShaderProgram.substitute(FSSource, '//VTK::ZBuffer::Impl', [
@@ -225,9 +177,6 @@ function vtkOpenGLStickMapper(publicAPI, model) {
         cellBO.getShaderSourceTime().getMTime() >
           cellBO.getAttributeUpdateTime().getMTime())
     ) {
-      const selector = ren.getSelector();
-      const picking = false; // (ren.getRenderWindow().getIsPicking() || selector !== null);
-
       if (cellBO.getProgram().isAttributeUsed('orientMC')) {
         if (
           !cellBO.getVAO().addAttributeArray(
@@ -277,31 +226,6 @@ function vtkOpenGLStickMapper(publicAPI, model) {
         ) {
           vtkErrorMacro("Error setting 'radiusMC' in shader VAO.");
         }
-      }
-      if (
-        picking &&
-        !selector /* ||
-           (model.LastSelectionState >= vtkHardwareSelector::ID_LOW24) */ &&
-        cellBO.getProgram().isAttributeUsed('selectionId')
-      ) {
-        if (
-          !cellBO
-            .getVAO()
-            .addAttributeArray(
-              cellBO.getProgram(),
-              cellBO.getCABO(),
-              'selectionId',
-              cellBO.getCABO().getColorOffset(),
-              cellBO.getCABO().getColorBOStride(),
-              model.context.UNSIGNED_CHAR,
-              4,
-              true
-            )
-        ) {
-          vtkErrorMacro("Error setting 'selectionId' in shader VAO.");
-        }
-      } else {
-        cellBO.getVAO().removeAttributeArray('selectionId');
       }
     }
 

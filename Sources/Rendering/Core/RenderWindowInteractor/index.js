@@ -4,7 +4,12 @@ import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/
 import Constants from 'vtk.js/Sources/Rendering/Core/RenderWindowInteractor/Constants';
 
 const { Device, Input } = Constants;
-const { vtkWarningMacro, vtkErrorMacro, normalizeWheel } = macro;
+const {
+  vtkWarningMacro,
+  vtkErrorMacro,
+  normalizeWheel,
+  vtkOnceErrorMacro,
+} = macro;
 
 // ----------------------------------------------------------------------------
 // Global methods
@@ -49,6 +54,9 @@ const handledEvents = [
   'EndRotate',
   'Button3D',
   'Move3D',
+  'StartInteractionEvent',
+  'InteractionEvent',
+  'EndInteractionEvent',
 ];
 
 function preventDefault(event) {
@@ -138,11 +146,13 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   };
 
   function getScreenEventPositionFor(source) {
-    const c = model.canvas;
-    const bounds = c.getBoundingClientRect();
+    const bounds = model.container.getBoundingClientRect();
+    const canvas = model.view.getCanvas();
+    const scaleX = canvas.width / bounds.width;
+    const scaleY = canvas.height / bounds.height;
     const position = {
-      x: source.clientX - bounds.left,
-      y: bounds.height - source.clientY + bounds.top,
+      x: scaleX * (source.clientX - bounds.left),
+      y: scaleY * (bounds.height - source.clientY + bounds.top),
       z: 0,
     };
     updateCurrentRenderer(position.x, position.y);
@@ -181,25 +191,26 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     const method = addListeners ? 'addEventListener' : 'removeEventListener';
     const invMethod = addListeners ? 'removeEventListener' : 'addEventListener';
 
-    if (model.canvas) {
-      model.canvas[invMethod]('mousemove', publicAPI.handleMouseMove);
+    if (model.container) {
+      model.container[invMethod]('mousemove', publicAPI.handleMouseMove);
     }
 
     rootElm[method]('mouseup', publicAPI.handleMouseUp);
+    rootElm[method]('mouseleave', publicAPI.handleMouseUp);
     rootElm[method]('mousemove', publicAPI.handleMouseMove);
     rootElm[method]('touchend', publicAPI.handleTouchEnd, false);
     rootElm[method]('touchcancel', publicAPI.handleTouchEnd, false);
     rootElm[method]('touchmove', publicAPI.handleTouchMove, false);
   }
 
-  publicAPI.bindEvents = (canvas) => {
-    model.canvas = canvas;
-    canvas.addEventListener('contextmenu', preventDefault);
-    // canvas.addEventListener('click', preventDefault); // Avoid stopping event propagation
-    canvas.addEventListener('wheel', publicAPI.handleWheel);
-    canvas.addEventListener('DOMMouseScroll', publicAPI.handleWheel);
-    canvas.addEventListener('mousemove', publicAPI.handleMouseMove);
-    canvas.addEventListener('mousedown', publicAPI.handleMouseDown);
+  publicAPI.bindEvents = (container) => {
+    model.container = container;
+    container.addEventListener('contextmenu', preventDefault);
+    // container.addEventListener('click', preventDefault); // Avoid stopping event propagation
+    container.addEventListener('wheel', publicAPI.handleWheel);
+    container.addEventListener('DOMMouseScroll', publicAPI.handleWheel);
+    container.addEventListener('mousemove', publicAPI.handleMouseMove);
+    container.addEventListener('mousedown', publicAPI.handleMouseDown);
     document
       .querySelector('body')
       .addEventListener('keypress', publicAPI.handleKeyPress);
@@ -210,17 +221,20 @@ function vtkRenderWindowInteractor(publicAPI, model) {
       .querySelector('body')
       .addEventListener('keyup', publicAPI.handleKeyUp);
 
-    canvas.addEventListener('touchstart', publicAPI.handleTouchStart, false);
+    container.addEventListener('touchstart', publicAPI.handleTouchStart, false);
   };
 
   publicAPI.unbindEvents = () => {
     interactionRegistration(false);
-    model.canvas.removeEventListener('contextmenu', preventDefault);
-    // model.canvas.removeEventListener('click', preventDefault); // Avoid stopping event propagation
-    model.canvas.removeEventListener('wheel', publicAPI.handleWheel);
-    model.canvas.removeEventListener('DOMMouseScroll', publicAPI.handleWheel);
-    model.canvas.removeEventListener('mousemove', publicAPI.handleMouseMove);
-    model.canvas.removeEventListener('mousedown', publicAPI.handleMouseDown);
+    model.container.removeEventListener('contextmenu', preventDefault);
+    // model.container.removeEventListener('click', preventDefault); // Avoid stopping event propagation
+    model.container.removeEventListener('wheel', publicAPI.handleWheel);
+    model.container.removeEventListener(
+      'DOMMouseScroll',
+      publicAPI.handleWheel
+    );
+    model.container.removeEventListener('mousemove', publicAPI.handleMouseMove);
+    model.container.removeEventListener('mousedown', publicAPI.handleMouseDown);
     document
       .querySelector('body')
       .removeEventListener('keypress', publicAPI.handleKeyPress);
@@ -230,8 +244,11 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     document
       .querySelector('body')
       .removeEventListener('keyup', publicAPI.handleKeyUp);
-    model.canvas.removeEventListener('touchstart', publicAPI.handleTouchStart);
-    model.canvas = null;
+    model.container.removeEventListener(
+      'touchstart',
+      publicAPI.handleTouchStart
+    );
+    model.container = null;
   };
 
   publicAPI.handleKeyPress = (event) => {
@@ -275,6 +292,18 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     }
   };
 
+  //----------------------------------------------------------------------
+  function forceRender() {
+    if (model.view && model.enabled && model.enableRender) {
+      model.inRender = true;
+      model.view.traverseAllPasses();
+      model.inRender = false;
+    }
+    // outside the above test so that third-party code can redirect
+    // the render to the appropriate class
+    publicAPI.invokeRenderEvent();
+  }
+
   publicAPI.requestAnimation = (requestor) => {
     if (requestor === undefined) {
       vtkErrorMacro(`undefined requester, can not start animating`);
@@ -296,9 +325,16 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   publicAPI.isAnimating = () =>
     model.vrAnimation || model.animationRequest !== null;
 
-  publicAPI.cancelAnimation = (requestor) => {
+  publicAPI.cancelAnimation = (requestor, skipWarning = false) => {
     if (!animationRequesters.has(requestor)) {
-      vtkWarningMacro(`${requestor} did not request an animation`);
+      if (!skipWarning) {
+        const requestStr =
+          requestor && requestor.getClassName
+            ? requestor.getClassName()
+            : requestor;
+        vtkWarningMacro(`${requestStr} did not request an animation`);
+      }
+
       return;
     }
     animationRequesters.delete(requestor);
@@ -306,7 +342,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
       cancelAnimationFrame(model.animationRequest);
       model.animationRequest = null;
       publicAPI.endAnimationEvent();
-      publicAPI.forceRender();
+      publicAPI.render();
     }
   };
 
@@ -409,7 +445,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     model.lastFrameTime = Math.max(0.01, model.lastFrameTime);
     model.lastFrameStart = currTime;
     publicAPI.animationEvent();
-    publicAPI.forceRender();
+    forceRender();
     model.animationRequest = requestAnimationFrame(publicAPI.handleAnimation);
   };
 
@@ -639,23 +675,13 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     return currentRenderer;
   };
 
-  //----------------------------------------------------------------------
-  publicAPI.forceRender = () => {
-    if (model.view && model.enabled && model.enableRender) {
-      model.view.traverseAllPasses();
-    }
-    // outside the above test so that third-party code can redirect
-    // the render to the appropriate class
-    publicAPI.invokeRenderEvent();
-  };
-
   // only render if we are not animating. If we are animating
   // then renders will happen naturally anyhow and we definitely
   // do not want extra renders as the make the apparent interaction
   // rate slower.
   publicAPI.render = () => {
-    if (model.animationRequest === null) {
-      publicAPI.forceRender();
+    if (model.animationRequest === null && !model.inRender) {
+      forceRender();
     }
   };
 
@@ -671,7 +697,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
       // Check that a poked renderer exists
       const renderer = publicAPI.getCurrentRenderer();
       if (!renderer) {
-        vtkErrorMacro(`
+        vtkOnceErrorMacro(`
           Can not forward events without a current renderer on the interactor.
         `);
         return;
@@ -800,8 +826,8 @@ function vtkRenderWindowInteractor(publicAPI, model) {
         let thresh =
           0.01 *
           Math.sqrt(
-            model.canvas.clientWidth * model.canvas.clientWidth +
-              model.canvas.clientHeight * model.canvas.clientHeight
+            model.container.clientWidth * model.container.clientWidth +
+              model.container.clientHeight * model.container.clientHeight
           );
         if (thresh < 15.0) {
           thresh = 15.0;
@@ -885,7 +911,7 @@ const DEFAULT_VALUES = {
   lightFollowCamera: true,
   desiredUpdateRate: 30.0,
   stillUpdateRate: 2.0,
-  canvas: null,
+  container: null,
   view: null,
   recognizeGestures: true,
   currentGesture: 'Start',
@@ -912,7 +938,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   // Create get-only macros
   macro.get(publicAPI, model, [
     'initialized',
-    'canvas',
+    'container',
     'enabled',
     'enableRender',
     'interactorStyle',

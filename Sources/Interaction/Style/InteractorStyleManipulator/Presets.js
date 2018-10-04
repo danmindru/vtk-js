@@ -10,6 +10,7 @@ const MANIPULTOR_TYPES = {
   zoomToMouse: Manipulators.vtkMouseCameraTrackballZoomToMouseManipulator,
   range: Manipulators.vtkMouseRangeManipulator,
   vrPan: Manipulators.vtkVRButtonPanManipulator,
+  gestureCamera: Manipulators.vtkGestureCameraManipulator,
 };
 
 const STYLES = {
@@ -20,21 +21,27 @@ const STYLES = {
     { type: 'zoom', options: { alt: true } },
     { type: 'zoom', options: { dragEnabled: false, scrollEnabled: true } },
     { type: 'zoom', options: { button: 3 } },
+    { type: 'roll', options: { shift: true, control: true } },
+    { type: 'roll', options: { shift: true, alt: true } },
+    { type: 'roll', options: { shift: true, button: 3 } },
     { type: 'vrPan' },
+    { type: 'gestureCamera' },
   ],
   '2D': [
-    { type: 'pan' },
-    { type: 'roll', options: { shift: true } },
+    { type: 'pan', options: { shift: true } },
     { type: 'zoom', options: { control: true } },
     { type: 'zoom', options: { alt: true } },
-    { type: 'zoom', options: { dragEnabled: false, scrollEnabled: true } },
+    { type: 'zoom', options: { button: 3 } },
+    { type: 'roll', options: { shift: true, alt: true } },
+    { type: 'roll', options: { shift: true, button: 3 } },
+    { type: 'roll', options: { shift: true } },
     { type: 'vrPan' },
+    { type: 'gestureCamera' },
   ],
 };
 
 function applyDefinitions(definitions, manipulatorStyle) {
-  manipulatorStyle.removeAllMouseManipulators();
-  manipulatorStyle.removeAllVRManipulators();
+  manipulatorStyle.removeAllManipulators();
   for (let idx = 0; idx < definitions.length; idx++) {
     const definition = definitions[idx];
     const instance = MANIPULTOR_TYPES[definition.type].newInstance(
@@ -42,6 +49,8 @@ function applyDefinitions(definitions, manipulatorStyle) {
     );
     if (instance.isA('vtkCompositeVRManipulator')) {
       manipulatorStyle.addVRManipulator(instance);
+    } else if (instance.isA('vtkCompositeGestureManipulator')) {
+      manipulatorStyle.addGestureManipulator(instance);
     } else {
       manipulatorStyle.addMouseManipulator(instance);
     }

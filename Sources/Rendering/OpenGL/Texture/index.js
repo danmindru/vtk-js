@@ -78,7 +78,7 @@ function vtkOpenGLTexture(publicAPI, model) {
 
         // do we have a cube map? Six inputs
         const data = [];
-        for (let i = 0; i < 6; ++i) {
+        for (let i = 0; i < model.renderable.getNumberOfInputPorts(); ++i) {
           const indata = model.renderable.getInputData(i);
           const scalars = indata
             ? indata
@@ -90,7 +90,14 @@ function vtkOpenGLTexture(publicAPI, model) {
             data.push(scalars);
           }
         }
-        if (data.length === 6) {
+        if (
+          model.renderable.getInterpolate() &&
+          inScalars.getNumberOfComponents() === 4
+        ) {
+          model.generateMipmap = true;
+          publicAPI.setMinificationFilter(Filter.LINEAR_MIPMAP_LINEAR);
+        }
+        if (data.length % 6 === 0) {
           publicAPI.createCubeFromRaw(
             ext[1] - ext[0] + 1,
             ext[3] - ext[2] + 1,
@@ -99,13 +106,6 @@ function vtkOpenGLTexture(publicAPI, model) {
             data
           );
         } else {
-          if (
-            model.renderable.getInterpolate() &&
-            inScalars.getNumberOfComponents() === 4
-          ) {
-            model.generateMipmap = true;
-            publicAPI.setMinificationFilter(Filter.LINEAR_MIPMAP_LINEAR);
-          }
           publicAPI.create2DFromRaw(
             ext[1] - ext[0] + 1,
             ext[3] - ext[2] + 1,
@@ -288,10 +288,22 @@ function vtkOpenGLTexture(publicAPI, model) {
       publicAPI.getOpenGLFilterMode(model.magnificationFilter)
     );
 
+    if (model.openGLRenderWindow.getWebgl2()) {
+      model.context.texParameteri(
+        model.target,
+        model.context.TEXTURE_BASE_LEVEL,
+        model.baseLevel
+      );
+
+      model.context.texParameteri(
+        model.target,
+        model.context.TEXTURE_MAX_LEVEL,
+        model.maxLevel
+      );
+    }
+
     // model.context.texParameterf(model.target, model.context.TEXTURE_MIN_LOD, model.minLOD);
     // model.context.texParameterf(model.target, model.context.TEXTURE_MAX_LOD, model.maxLOD);
-    // model.context.texParameteri(model.target, model.context.TEXTURE_BASE_LEVEL, model.baseLevel);
-    // model.context.texParameteri(model.target, model.context.TEXTURE_MAX_LEVEL, model.maxLevel);
 
     model.sendParametersTime.modified();
   };
@@ -729,6 +741,7 @@ function vtkOpenGLTexture(publicAPI, model) {
     model.depth = 1;
     model.numberOfDimensions = 2;
     model.openGLRenderWindow.activateTexture(publicAPI);
+    model.maxLevel = data.length / 6 - 1;
     publicAPI.createTexture();
     publicAPI.bind();
 
@@ -739,15 +752,21 @@ function vtkOpenGLTexture(publicAPI, model) {
     // and uses the old renderman standard with Y going down
     // even though it is completely at odds with OpenGL standards
     const invertedData = [];
+    let widthLevel = model.width;
+    let heightLevel = model.height;
     for (let i = 0; i < scaledData.length; i++) {
+      if (i % 6 === 0 && i !== 0) {
+        widthLevel /= 2;
+        heightLevel /= 2;
+      }
       invertedData[i] = new window[dataType](
-        model.height * model.width * model.components
+        heightLevel * widthLevel * model.components
       );
-      for (let y = 0; y < model.height; ++y) {
-        const row1 = y * model.width * model.components;
-        const row2 = (model.height - y - 1) * model.width * model.components;
+      for (let y = 0; y < heightLevel; ++y) {
+        const row1 = y * widthLevel * model.components;
+        const row2 = (heightLevel - y - 1) * widthLevel * model.components;
         invertedData[i].set(
-          scaledData[i].slice(row2, row2 + model.width * model.components),
+          scaledData[i].slice(row2, row2 + widthLevel * model.components),
           row1
         );
       }
@@ -756,21 +775,39 @@ function vtkOpenGLTexture(publicAPI, model) {
     // Source texture data from the PBO.
     model.context.pixelStorei(model.context.UNPACK_ALIGNMENT, 1);
 
+    // We get the 6 images
     for (let i = 0; i < 6; i++) {
-      if (invertedData[i]) {
+      // For each mipmap level
+      let j = 0;
+      let w = model.width;
+      let h = model.height;
+      while (w >= 1 && h >= 1) {
+        // In webgl 1, all levels need to be defined. So if the latest level size is
+        // 8x8, we have to add 3 more null textures (4x4, 2x2, 1x1)
+        // In webgl 2, the attribtue maxLevel will be use.
+        let tempData = null;
+        if (j <= model.maxLevel) {
+          tempData = invertedData[6 * j + i];
+        }
         model.context.texImage2D(
           model.context.TEXTURE_CUBE_MAP_POSITIVE_X + i,
-          0,
+          j,
           model.internalFormat,
-          model.width,
-          model.height,
+          w,
+          h,
           0,
           model.format,
           model.openGLDataType,
-          invertedData[i]
+          tempData
         );
+        j++;
+        w /= 2;
+        h /= 2;
       }
     }
+
+    // generateMipmap must not be called here because we manually upload all levels
+    // if it is called, all levels will be overwritten
 
     publicAPI.deactivate();
     return true;
@@ -1398,7 +1435,7 @@ const DEFAULT_VALUES = {
   minLOD: -1000.0,
   maxLOD: 1000.0,
   baseLevel: 0,
-  maxLevel: 0,
+  maxLevel: 1000,
   generateMipmap: false,
   computedGradients: false,
 };

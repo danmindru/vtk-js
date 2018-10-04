@@ -39,27 +39,35 @@ function vtkLineRepresentation(publicAPI, model) {
   };
 
   publicAPI.getResolution = () => model.lineSource.getResolution();
+
   publicAPI.getPoint1WorldPosition = () =>
     model.point1Representation.getWorldPosition();
+
   publicAPI.getPoint2WorldPosition = () =>
     model.point2Representation.getWorldPosition();
+
   publicAPI.getPoint1DisplayPosition = () =>
     model.point1Representation.getDisplayPosition();
+
   publicAPI.getPoint2DisplayPosition = () =>
     model.point2Representation.getDisplayPosition();
+
   publicAPI.setPoint1WorldPosition = (pos) => {
     model.point1Representation.setWorldPosition(pos);
     model.lineSource.setPoint1(...pos);
   };
+
   publicAPI.setPoint2WorldPosition = (pos) => {
     model.point2Representation.setWorldPosition(pos);
     model.lineSource.setPoint2(...pos);
   };
+
   publicAPI.setPoint1DisplayPosition = (pos) => {
     model.point1Representation.setDisplayPosition(pos);
     const p = model.point1Representation.getWorldPosition();
     model.point1Representation.setWorldPosition(p);
   };
+
   publicAPI.setPoint2DisplayPosition = (pos) => {
     model.point2Representation.setDisplayPosition(pos);
     const p = model.point2Representation.getWorldPosition();
@@ -316,15 +324,19 @@ function vtkLineRepresentation(publicAPI, model) {
   publicAPI.highlightPoint = (pointId, highlight) => {
     if (pointId === 0) {
       if (highlight) {
-        model.point1Representation.setProperty(model.selectedEndPointProperty);
+        model.point1Representation.applyProperty(
+          model.selectedEndPointProperty
+        );
       } else {
-        model.point1Representation.setProperty(model.endPointProperty);
+        model.point1Representation.applyProperty(model.endPointProperty);
       }
     } else if (pointId === 1) {
       if (highlight) {
-        model.point2Representation.setProperty(model.selectedEndPoint2Property);
+        model.point2Representation.applyProperty(
+          model.selectedEndPoint2Property
+        );
       } else {
-        model.point2Representation.setProperty(model.endPoint2Property);
+        model.point2Representation.applyProperty(model.endPoint2Property);
       }
     } else {
       // TODO
@@ -482,8 +494,8 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.selectedLineProperty.setLineWidth(2.0);
 
   // Pass the initial properties to the actor
-  model.point1Representation.setProperty(model.endPointProperty);
-  model.point2Representation.setProperty(model.endPoint2Property);
+  model.point1Representation.applyProperty(model.endPointProperty);
+  model.point2Representation.applyProperty(model.endPoint2Property);
   model.point1Representation.setWorldPosition(model.lineSource.getPoint1());
   model.point2Representation.setWorldPosition(model.lineSource.getPoint2());
   model.lineActor.setProperty(model.lineProperty);
