@@ -3,7 +3,7 @@ var prettierConf = require('./prettier.config.js');
 module.exports = {
   extends: ['airbnb', 'prettier'],
   rules: {
-    'prettier/prettier': ['error', prettierConf],
+    'prettier/prettier': ['warn', prettierConf],
 
     // But we want the following
     'no-multi-spaces': ["error", { exceptions: { "ImportDeclaration": true } }],
