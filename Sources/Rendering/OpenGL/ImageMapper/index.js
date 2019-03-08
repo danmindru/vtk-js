@@ -13,6 +13,7 @@ import {
   Wrap,
   Filter,
 } from 'vtk.js/Sources/Rendering/OpenGL/Texture/Constants';
+import { InterpolationType } from 'vtk.js/Sources/Rendering/Core/ImageProperty/Constants';
 
 import vtkPolyDataVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkPolyDataVS.glsl';
 import vtkPolyDataFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkPolyDataFS.glsl';
@@ -383,7 +384,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     model.currentInput = model.renderable.getInputData();
     publicAPI.invokeEvent({ type: 'EndEvent' });
 
-    if (model.currentInput === null) {
+    if (!model.currentInput) {
       vtkErrorMacro('No input!');
       return;
     }
@@ -429,6 +430,16 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       return;
     }
 
+    // set interpolation on the texture based on property setting
+    const iType = actor.getProperty().getInterpolationType();
+    if (iType === InterpolationType.NEAREST) {
+      model.colorTexture.setMinificationFilter(Filter.NEAREST);
+      model.colorTexture.setMagnificationFilter(Filter.NEAREST);
+    } else {
+      model.colorTexture.setMinificationFilter(Filter.LINEAR);
+      model.colorTexture.setMagnificationFilter(Filter.LINEAR);
+    }
+
     const cWidth = 1024;
     const cTable = new Uint8Array(cWidth * 3);
     const cfun = actor.getProperty().getRGBTransferFunction();
@@ -442,8 +453,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
           cTable[i] = 255.0 * cfTable[i];
         }
         model.colorTextureString = cfunToString;
-        model.colorTexture.setMinificationFilter(Filter.LINEAR);
-        model.colorTexture.setMagnificationFilter(Filter.LINEAR);
         model.colorTexture.create2DFromRaw(
           cWidth,
           1,
@@ -461,8 +470,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
           cTable[i + 2] = 255.0 * i / ((cWidth - 1) * 3);
         }
         model.colorTextureString = cfunToString;
-        model.colorTexture.setMinificationFilter(Filter.LINEAR);
-        model.colorTexture.setMagnificationFilter(Filter.LINEAR);
         model.colorTexture.create2DFromRaw(
           cWidth,
           1,
@@ -500,22 +507,35 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     const toString = `${nSlice}A${image.getMTime()}A${image
       .getPointData()
       .getScalars()
-      .getMTime()}B${publicAPI.getMTime()}C${model.renderable.getSlicingMode()}`;
+      .getMTime()}B${publicAPI.getMTime()}C${model.renderable.getSlicingMode()}D${actor
+      .getProperty()
+      .getMTime()}`;
     if (model.VBOBuildString !== toString) {
       // Build the VBOs
       const dims = image.getDimensions();
-      if (
-        image
-          .getPointData()
-          .getScalars()
-          .getNumberOfComponents() === 4
-      ) {
-        model.openGLTexture.setGenerateMipmap(true);
-        model.openGLTexture.setMinificationFilter(Filter.LINEAR_MIPMAP_LINEAR);
+      const numComponents = image
+        .getPointData()
+        .getScalars()
+        .getNumberOfComponents();
+      if (iType === InterpolationType.NEAREST) {
+        if (numComponents === 4) {
+          model.openGLTexture.setGenerateMipmap(true);
+          model.openGLTexture.setMinificationFilter(Filter.NEAREST);
+        } else {
+          model.openGLTexture.setMinificationFilter(Filter.NEAREST);
+        }
+        model.openGLTexture.setMagnificationFilter(Filter.NEAREST);
       } else {
-        model.openGLTexture.setMinificationFilter(Filter.LINEAR);
+        if (numComponents === 4) {
+          model.openGLTexture.setGenerateMipmap(true);
+          model.openGLTexture.setMinificationFilter(
+            Filter.LINEAR_MIPMAP_LINEAR
+          );
+        } else {
+          model.openGLTexture.setMinificationFilter(Filter.LINEAR);
+        }
+        model.openGLTexture.setMagnificationFilter(Filter.LINEAR);
       }
-      model.openGLTexture.setMagnificationFilter(Filter.LINEAR);
       model.openGLTexture.setWrapS(Wrap.CLAMP_TO_EDGE);
       model.openGLTexture.setWrapT(Wrap.CLAMP_TO_EDGE);
       const numComp = image

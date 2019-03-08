@@ -1,6 +1,7 @@
 import macro from 'vtk.js/Sources/macro';
 
 import vtkAnnotatedCubeActor from 'vtk.js/Sources/Rendering/Core/AnnotatedCubeActor';
+import vtkAxesActor from 'vtk.js/Sources/Rendering/Core/AxesActor';
 import vtkCornerAnnotation from 'vtk.js/Sources/Interaction/UI/CornerAnnotation';
 import vtkInteractorStyleManipulator from 'vtk.js/Sources/Interaction/Style/InteractorStyleManipulator';
 import vtkMatrixBuilder from 'vtk.js/Sources/Common/Core/MatrixBuilder';
@@ -12,6 +13,8 @@ import vtkRenderWindowInteractor from 'vtk.js/Sources/Rendering/Core/RenderWindo
 
 import InteractionPresets from 'vtk.js/Sources/Interaction/Style/InteractorStyleManipulator/Presets';
 import AnnotatedCubePresets from 'vtk.js/Sources/Rendering/Core/AnnotatedCubeActor/Presets';
+
+const EPSILON = 0.000001;
 
 // ----------------------------------------------------------------------------
 // vtkViewProxy methods
@@ -60,10 +63,12 @@ function vtkViewProxy(publicAPI, model) {
 
   // Orientation a cube setup -------------------------------------------------
 
-  model.orientationAxes = vtkAnnotatedCubeActor.newInstance();
-  AnnotatedCubePresets.applyPreset('default', model.orientationAxes);
+  model.orientationAxesArrow = vtkAxesActor.newInstance();
+  model.orientationAxesCube = vtkAnnotatedCubeActor.newInstance();
+  AnnotatedCubePresets.applyPreset('default', model.orientationAxesCube);
+  AnnotatedCubePresets.applyPreset('lps', model.orientationAxesCube);
   model.orientationWidget = vtkOrientationMarkerWidget.newInstance({
-    actor: model.orientationAxes,
+    actor: model.orientationAxesArrow,
     interactor: model.renderWindow.getInteractor(),
   });
   model.orientationWidget.setEnabled(true);
@@ -104,6 +109,23 @@ function vtkViewProxy(publicAPI, model) {
 
   // --------------------------------------------------------------------------
 
+  publicAPI.setOrientationAxesType = (type) => {
+    switch (type) {
+      case 'arrow':
+        model.orientationAxesType = 'arrow';
+        model.orientationWidget.setActor(model.orientationAxesArrow);
+        break;
+      case 'cube':
+      default:
+        model.orientationWidget.setActor(model.orientationAxesCube);
+        model.orientationAxesType = 'cube';
+        break;
+    }
+    publicAPI.renderLater();
+  };
+
+  // --------------------------------------------------------------------------
+
   publicAPI.setPresetToOrientationAxes = (nameOrDefinitions) => {
     let changeDetected = false;
     if (typeof nameOrDefinitions === 'string') {
@@ -111,7 +133,7 @@ function vtkViewProxy(publicAPI, model) {
         model.presetToOrientationAxes = nameOrDefinitions;
         changeDetected = AnnotatedCubePresets.applyPreset(
           nameOrDefinitions,
-          model.orientationAxes
+          model.orientationAxesCube
         );
         publicAPI.modified();
       }
@@ -120,7 +142,7 @@ function vtkViewProxy(publicAPI, model) {
     model.presetToOrientationAxes = 'Custom';
     changeDetected = AnnotatedCubePresets.applyDefinitions(
       nameOrDefinitions,
-      model.orientationAxes
+      model.orientationAxesCube
     );
     publicAPI.modified();
     return changeDetected;
@@ -163,10 +185,10 @@ function vtkViewProxy(publicAPI, model) {
   publicAPI.renderLater = () => {
     if (model.representations.length > 0 && model.resetCameraOnFirstRender) {
       model.resetCameraOnFirstRender = false;
-      // console.log('==> resetCamera before renderLater', model.proxyId);
       publicAPI.resetCamera();
     }
     model.orientationWidget.updateMarkerOrientation();
+    model.renderer.resetCameraClippingRange();
     setTimeout(model.renderWindow.render, 0);
   };
 
@@ -196,6 +218,10 @@ function vtkViewProxy(publicAPI, model) {
       representation.getActors().forEach(model.renderer.removeActor);
       representation.getVolumes().forEach(model.renderer.removeVolume);
     }
+
+    if (model.representations.length === 0) {
+      model.resetCameraOnFirstRender = true;
+    }
   };
 
   // --------------------------------------------------------------------------
@@ -216,11 +242,13 @@ function vtkViewProxy(publicAPI, model) {
 
   publicAPI.openCaptureImage = (target = '_blank') => {
     const image = new Image();
-    image.src = publicAPI.captureImage();
-    const w = window.open('', target);
-    w.document.write(image.outerHTML);
-    w.document.title = 'vtk.js Image Capture';
-    window.focus();
+    publicAPI.captureImage().then((imageURL) => {
+      image.src = imageURL;
+      const w = window.open('', target);
+      w.document.write(image.outerHTML);
+      w.document.title = 'vtk.js Image Capture';
+      window.focus();
+    });
   };
 
   // --------------------------------------------------------------------------
@@ -282,10 +310,20 @@ function vtkViewProxy(publicAPI, model) {
 
   // --------------------------------------------------------------------------
 
-  publicAPI.updateOrientation = (axisIndex, orientation, viewUp) => {
+  publicAPI.updateOrientation = (
+    axisIndex,
+    orientation,
+    viewUp,
+    animateSteps = 0
+  ) => {
     if (axisIndex === undefined) {
-      return;
+      return Promise.resolve();
     }
+
+    const originalPosition = model.camera.getPosition();
+    const originalViewUp = model.camera.getViewUp();
+    const originalFocalPoint = model.camera.getFocalPoint();
+
     model.axis = axisIndex;
     model.orientation = orientation;
     model.viewUp = viewUp;
@@ -293,6 +331,115 @@ function vtkViewProxy(publicAPI, model) {
     position[model.axis] += model.orientation;
     model.camera.setPosition(...position);
     model.camera.setViewUp(...viewUp);
+    model.renderer.resetCamera();
+
+    const destPosition = model.camera.getPosition();
+    const destViewUp = model.camera.getViewUp();
+
+    // Reset to original to prevent initial render flash
+    model.camera.setPosition(...originalPosition);
+    model.camera.setViewUp(...originalViewUp);
+
+    const animationStack = [{ position: destPosition, viewUp: destViewUp }];
+
+    if (animateSteps) {
+      const deltaPosition = [
+        (originalPosition[0] - destPosition[0]) / animateSteps,
+        (originalPosition[1] - destPosition[1]) / animateSteps,
+        (originalPosition[2] - destPosition[2]) / animateSteps,
+      ];
+      const deltaViewUp = [
+        (originalViewUp[0] - destViewUp[0]) / animateSteps,
+        (originalViewUp[1] - destViewUp[1]) / animateSteps,
+        (originalViewUp[2] - destViewUp[2]) / animateSteps,
+      ];
+
+      const needSteps =
+        deltaPosition[0] ||
+        deltaPosition[1] ||
+        deltaPosition[2] ||
+        deltaViewUp[0] ||
+        deltaViewUp[1] ||
+        deltaViewUp[2];
+
+      const positionDeltaAxisCount = deltaPosition
+        .map((i) => (Math.abs(i) < EPSILON ? 0 : 1))
+        .reduce((a, b) => a + b, 0);
+      const viewUpDeltaAxisCount = deltaViewUp
+        .map((i) => (Math.abs(i) < EPSILON ? 0 : 1))
+        .reduce((a, b) => a + b, 0);
+      const rotation180Only =
+        viewUpDeltaAxisCount === 1 && positionDeltaAxisCount === 0;
+
+      if (needSteps) {
+        if (rotation180Only) {
+          const availableAxes = originalFocalPoint
+            .map(
+              (fp, i) =>
+                Math.abs(originalPosition[i] - fp) < EPSILON ? i : null
+            )
+            .filter((i) => i !== null);
+          const axisCorrectionIndex = availableAxes.find(
+            (v) => Math.abs(deltaViewUp[v]) < EPSILON
+          );
+          console.log('axisCorrectionIndex', axisCorrectionIndex);
+          for (let i = 0; i < animateSteps; i++) {
+            const newViewUp = [
+              viewUp[0] + (i + 1) * deltaViewUp[0],
+              viewUp[1] + (i + 1) * deltaViewUp[1],
+              viewUp[2] + (i + 1) * deltaViewUp[2],
+            ];
+            newViewUp[axisCorrectionIndex] = Math.sin(
+              Math.PI * i / (animateSteps - 1)
+            );
+            animationStack.push({
+              position: destPosition,
+              viewUp: newViewUp,
+            });
+          }
+        } else {
+          for (let i = 0; i < animateSteps; i++) {
+            animationStack.push({
+              position: [
+                destPosition[0] + (i + 1) * deltaPosition[0],
+                destPosition[1] + (i + 1) * deltaPosition[1],
+                destPosition[2] + (i + 1) * deltaPosition[2],
+              ],
+              viewUp: [
+                viewUp[0] + (i + 1) * deltaViewUp[0],
+                viewUp[1] + (i + 1) * deltaViewUp[1],
+                viewUp[2] + (i + 1) * deltaViewUp[2],
+              ],
+            });
+          }
+        }
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      publicAPI.setAnimation(true, publicAPI);
+      let intervalId = null;
+      const consumeAnimationStack = () => {
+        if (animationStack.length) {
+          const {
+            position: cameraPosition,
+            viewUp: cameraViewUp,
+          } = animationStack.pop();
+          model.camera.setPosition(...cameraPosition);
+          model.camera.setViewUp(...cameraViewUp);
+          model.renderer.resetCameraClippingRange();
+
+          if (model.interactor.getLightFollowCamera()) {
+            model.renderer.updateLightsGeometryToFollowCamera();
+          }
+        } else {
+          clearInterval(intervalId);
+          publicAPI.setAnimation(false, publicAPI);
+          resolve();
+        }
+      };
+      intervalId = setInterval(consumeAnimationStack, 1);
+    });
   };
 
   // --------------------------------------------------------------------------
@@ -330,7 +477,7 @@ function vtkViewProxy(publicAPI, model) {
   // Initialization from state or input
   // --------------------------------------------------------------------------
 
-  publicAPI.updateOrientation(model.axis, model.orientation, model.viewUp);
+  publicAPI.resetOrientation();
   updateAnnotationColor();
 }
 
@@ -343,7 +490,11 @@ const DEFAULT_VALUES = {
   sectionName: 'view',
   annotationOpacity: 1,
   resetCameraOnFirstRender: true,
-  presetToOrientationAxes: 'default',
+  presetToOrientationAxes: 'lps',
+  orientationAxesType: 'arrow',
+  axis: 1,
+  orientation: 0,
+  viewUp: [0, 0, 1],
 };
 
 // ----------------------------------------------------------------------------
@@ -352,20 +503,22 @@ function extend(publicAPI, model, initialValues = {}) {
   Object.assign(model, DEFAULT_VALUES, initialValues);
 
   macro.obj(publicAPI, model);
+  macro.setGet(publicAPI, model, ['name']);
   macro.get(publicAPI, model, [
-    'representations',
-    'renderer',
-    'renderWindow',
-    'openglRenderWindow',
+    'annotationOpacity',
+    'camera',
+    'container',
+    'cornerAnnotation',
     'interactor',
     'interactorStyle2D',
     'interactorStyle3D',
-    'container',
-    'useParallelRendering',
-    'camera',
-    'cornerAnnotation',
-    'annotationOpacity',
+    'openglRenderWindow',
+    'orientationAxesType',
     'presetToOrientationAxes',
+    'renderer',
+    'renderWindow',
+    'representations',
+    'useParallelRendering',
   ]);
 
   // Object specific methods

@@ -1,6 +1,23 @@
 import macro from 'vtk.js/Sources/macro';
-
+import vtkMouseRangeManipulator from 'vtk.js/Sources/Interaction/Manipulators/MouseRangeManipulator';
 import vtkViewProxy from 'vtk.js/Sources/Proxy/Core/ViewProxy';
+import vtkMath from 'vtk.js/Sources/Common/Core/Math';
+
+function formatAnnotationValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(formatAnnotationValue).join(', ');
+  }
+  if (Number.isInteger(value)) {
+    return value;
+  }
+  if (Number.isFinite(value)) {
+    if (Math.abs(value) < 0.01) {
+      return '0';
+    }
+    return value.toFixed(2);
+  }
+  return value;
+}
 
 // ----------------------------------------------------------------------------
 // vtkView2DProxy methods
@@ -9,6 +26,26 @@ import vtkViewProxy from 'vtk.js/Sources/Proxy/Core/ViewProxy';
 function vtkView2DProxy(publicAPI, model) {
   // Set our className
   model.classHierarchy.push('vtkView2DProxy');
+
+  publicAPI.updateWidthHeightAnnotation = () => {
+    const { ijkOrientation, dimensions } = model.cornerAnnotation.getMetadata();
+    if (ijkOrientation && dimensions) {
+      let realDimensions = dimensions;
+      if (dimensions.length > 3) {
+        // the dimensions is a string
+        realDimensions = dimensions.split(',').map(Number);
+      }
+      const dop = model.camera.getDirectionOfProjection();
+      const viewUp = model.camera.getViewUp();
+      const viewRight = [0, 0, 0];
+      vtkMath.cross(dop, viewUp, viewRight);
+      const wIdx = vtkMath.getMajorAxisIndex(viewRight);
+      const hIdx = vtkMath.getMajorAxisIndex(viewUp);
+      const sliceWidth = realDimensions['IJK'.indexOf(ijkOrientation[wIdx])];
+      const sliceHeight = realDimensions['IJK'.indexOf(ijkOrientation[hIdx])];
+      publicAPI.updateCornerAnnotation({ sliceWidth, sliceHeight });
+    }
+  };
 
   const superUpdateOrientation = publicAPI.updateOrientation;
   publicAPI.updateOrientation = (axisIndex, orientation, viewUp) => {
@@ -26,18 +63,145 @@ function vtkView2DProxy(publicAPI, model) {
     publicAPI.updateCornerAnnotation({ axis: 'XYZ'[axisIndex] });
   };
 
-  // Setup default corner annotation
-  /* eslint-disable no-template-curly-in-string */
-  publicAPI.setCornerAnnotation('nw', 'Orientation ${axis}<br>Slice ${slice}');
-  publicAPI.setCornerAnnotation('se', 'CW ${colorWindow}<br>CL ${colorLevel}');
-  /* eslint-enable no-template-curly-in-string */
-
   const superAddRepresentation = publicAPI.addRepresentation;
   publicAPI.addRepresentation = (rep) => {
     superAddRepresentation(rep);
     if (rep.setSlicingMode) {
       rep.setSlicingMode('XYZ'[model.axis]);
+      publicAPI.bindRepresentationToManipulator(rep);
     }
+  };
+
+  const superRemoveRepresentation = publicAPI.removeRepresentation;
+  publicAPI.removeRepresentation = (rep) => {
+    superRemoveRepresentation(rep);
+    if (rep === model.sliceRepresentation) {
+      publicAPI.bindRepresentationToManipulator(null);
+      let count = model.representations.length;
+      while (count--) {
+        if (
+          publicAPI.bindRepresentationToManipulator(
+            model.representations[count]
+          )
+        ) {
+          count = 0;
+        }
+      }
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // Range Manipulator setup
+  // -------------------------------------------------------------------------
+
+  model.rangeManipulator = vtkMouseRangeManipulator.newInstance({
+    button: 1,
+    scrollEnabled: true,
+  });
+  model.interactorStyle2D.addMouseManipulator(model.rangeManipulator);
+
+  function setWindowWidth(windowWidth) {
+    publicAPI.updateCornerAnnotation({ windowWidth });
+    if (model.sliceRepresentation && model.sliceRepresentation.setWindowWidth) {
+      model.sliceRepresentation.setWindowWidth(windowWidth);
+    }
+  }
+
+  function setWindowLevel(windowLevel) {
+    publicAPI.updateCornerAnnotation({ windowLevel });
+    if (model.sliceRepresentation && model.sliceRepresentation.setWindowLevel) {
+      model.sliceRepresentation.setWindowLevel(windowLevel);
+    }
+  }
+
+  function setSlice(sliceRaw) {
+    const numberSliceRaw = Number(sliceRaw);
+    const slice = Number.isInteger(numberSliceRaw)
+      ? sliceRaw
+      : numberSliceRaw.toFixed(2);
+
+    // add 'slice' in annotation
+    const annotation = { slice };
+    if (model.sliceRepresentation && model.sliceRepresentation.setSlice) {
+      model.sliceRepresentation.setSlice(numberSliceRaw);
+    }
+
+    // extend annotation
+    if (model.sliceRepresentation && model.sliceRepresentation.getAnnotations) {
+      const addOn = model.sliceRepresentation.getAnnotations();
+      Object.keys(addOn).forEach((key) => {
+        annotation[key] = formatAnnotationValue(addOn[key]);
+      });
+    }
+
+    publicAPI.updateCornerAnnotation(annotation);
+  }
+
+  publicAPI.bindRepresentationToManipulator = (representation) => {
+    let nbListeners = 0;
+    model.rangeManipulator.removeAllListeners();
+    model.sliceRepresentation = representation;
+    while (model.sliceRepresentationSubscriptions.length) {
+      model.sliceRepresentationSubscriptions.pop().unsubscribe();
+    }
+    if (representation) {
+      model.sliceRepresentationSubscriptions.push(
+        model.camera.onModified(publicAPI.updateWidthHeightAnnotation)
+      );
+      if (representation.getWindowWidth) {
+        const update = () => setWindowWidth(representation.getWindowWidth());
+        const { min, max } = representation.getPropertyDomainByName(
+          'windowWidth'
+        );
+        model.rangeManipulator.setVerticalListener(
+          min,
+          max,
+          1,
+          representation.getWindowWidth,
+          setWindowWidth
+        );
+        model.sliceRepresentationSubscriptions.push(
+          representation.onModified(update)
+        );
+        update();
+        nbListeners++;
+      }
+      if (representation.getWindowLevel) {
+        const update = () => setWindowLevel(representation.getWindowLevel());
+        const { min, max } = representation.getPropertyDomainByName(
+          'windowLevel'
+        );
+        model.rangeManipulator.setHorizontalListener(
+          min,
+          max,
+          1,
+          representation.getWindowLevel,
+          setWindowLevel
+        );
+        model.sliceRepresentationSubscriptions.push(
+          representation.onModified(update)
+        );
+        update();
+        nbListeners++;
+      }
+      if (representation.getSlice && representation.getSliceValues) {
+        const update = () => setSlice(representation.getSlice());
+        const values = representation.getSliceValues();
+        model.rangeManipulator.setScrollListener(
+          values[0],
+          values[values.length - 1],
+          values[1] - values[0],
+          representation.getSlice,
+          setSlice
+        );
+        model.sliceRepresentationSubscriptions.push(
+          representation.onModified(update)
+        );
+        update();
+        nbListeners++;
+      }
+    }
+    return nbListeners;
   };
 }
 
@@ -50,6 +214,7 @@ const DEFAULT_VALUES = {
   orientation: -1,
   viewUp: [0, 1, 0],
   useParallelRendering: true,
+  sliceRepresentationSubscriptions: [],
 };
 
 // ----------------------------------------------------------------------------
