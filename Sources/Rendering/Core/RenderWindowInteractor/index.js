@@ -1,10 +1,15 @@
 import macro from 'vtk.js/Sources/macro';
 import vtkMath from 'vtk.js/Sources/Common/Core/Math';
-import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/InteractorStyleTrackballCamera';
+
 import Constants from 'vtk.js/Sources/Rendering/Core/RenderWindowInteractor/Constants';
 
 const { Device, Input } = Constants;
-const { vtkWarningMacro, vtkErrorMacro, normalizeWheel } = macro;
+const {
+  vtkWarningMacro,
+  vtkErrorMacro,
+  normalizeWheel,
+  vtkOnceErrorMacro,
+} = macro;
 
 // ----------------------------------------------------------------------------
 // Global methods
@@ -49,6 +54,9 @@ const handledEvents = [
   'EndRotate',
   'Button3D',
   'Move3D',
+  'StartInteractionEvent',
+  'InteractionEvent',
+  'EndInteractionEvent',
 ];
 
 function preventDefault(event) {
@@ -188,6 +196,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     }
 
     rootElm[method]('mouseup', publicAPI.handleMouseUp);
+    rootElm[method]('mouseleave', publicAPI.handleMouseUp);
     rootElm[method]('mousemove', publicAPI.handleMouseMove);
     rootElm[method]('touchend', publicAPI.handleTouchEnd, false);
     rootElm[method]('touchcancel', publicAPI.handleTouchEnd, false);
@@ -316,9 +325,16 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   publicAPI.isAnimating = () =>
     model.vrAnimation || model.animationRequest !== null;
 
-  publicAPI.cancelAnimation = (requestor) => {
+  publicAPI.cancelAnimation = (requestor, skipWarning = false) => {
     if (!animationRequesters.has(requestor)) {
-      vtkWarningMacro(`${requestor} did not request an animation`);
+      if (!skipWarning) {
+        const requestStr =
+          requestor && requestor.getClassName
+            ? requestor.getClassName()
+            : requestor;
+        vtkWarningMacro(`${requestStr} did not request an animation`);
+      }
+
       return;
     }
     animationRequesters.delete(requestor);
@@ -454,6 +470,8 @@ function vtkRenderWindowInteractor(publicAPI, model) {
      *
      */
     const callData = normalizeWheel(event);
+    const keys = getModifierKeysFor(event);
+    Object.assign(callData, keys);
 
     if (model.wheelTimeoutID === 0) {
       publicAPI.startMouseWheelEvent(callData);
@@ -681,7 +699,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
       // Check that a poked renderer exists
       const renderer = publicAPI.getCurrentRenderer();
       if (!renderer) {
-        vtkErrorMacro(`
+        vtkOnceErrorMacro(`
           Can not forward events without a current renderer on the interactor.
         `);
         return;
@@ -818,7 +836,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
         }
         const pinchDistance = Math.abs(newDistance - originalDistance);
         const rotateDistance =
-          newDistance * 3.1415926 * Math.abs(angleDeviation) / 360.0;
+          (newDistance * 3.1415926 * Math.abs(angleDeviation)) / 360.0;
         const panDistance = Math.sqrt(
           trans[0] * trans[0] + trans[1] * trans[1]
         );
@@ -944,8 +962,6 @@ export function extend(publicAPI, model, initialValues = {}) {
 
   // Object specific methods
   vtkRenderWindowInteractor(publicAPI, model);
-
-  publicAPI.setInteractorStyle(vtkInteractorStyleTrackballCamera.newInstance());
 }
 
 // ----------------------------------------------------------------------------

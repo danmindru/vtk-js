@@ -285,10 +285,10 @@ function processFieldData(
       }
     });
 
-    const arrays = fieldElem.children;
-    const nbArrays = arrays.length;
+    const dataArrayElems = fieldElem.getElementsByTagName('DataArray');
+    const nbArrays = dataArrayElems.length;
     for (let idx = 0; idx < nbArrays; idx++) {
-      const array = arrays[idx];
+      const array = dataArrayElems[idx];
       const dataArray = vtkDataArray.newInstance(
         processDataArray(
           size,
@@ -320,7 +320,7 @@ function vtkXMLReader(publicAPI, model) {
 
   // Internal method to fetch Array
   function fetchData(url, option = {}) {
-    return model.dataAccessHelper.fetchText(publicAPI, url, option);
+    return model.dataAccessHelper.fetchBinary(url, option);
   }
 
   // Set DataSet url
@@ -399,7 +399,7 @@ function vtkXMLReader(publicAPI, model) {
         const offset = Number(arrayElems[i].getAttribute('offset'));
         let nextOffset = 0;
         if (i === arrayElems.length - 1) {
-          nextOffset = appendedBuffer.length;
+          nextOffset = appendedBuffer.length || appendedBuffer.byteLength;
         } else {
           nextOffset = Number(arrayElems[i + 1].getAttribute('offset'));
         }

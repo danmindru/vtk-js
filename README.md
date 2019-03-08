@@ -1,11 +1,12 @@
 ## [VTK.js - The Visualization Toolkit for JavaScript](http://kitware.github.io/vtk-js/)
 
-[![Build Status](https://travis-ci.org/Kitware/vtk-js.svg)](https://travis-ci.org/Kitware/vtk.js)
+[![Build Status](https://dev.azure.com/Kitware/vtk-js/_apis/build/status/Kitware.vtk-js?branchName=master)](https://dev.azure.com/Kitware/vtk-js/_build/latest?definitionId=2&branchName=master)
+[![Build Status](https://travis-ci.org/Kitware/vtk-js.svg)](https://travis-ci.org/Kitware/vtk-js)
 [![Dependency Status](https://david-dm.org/kitware/vtk-js.svg)](https://david-dm.org/kitware/vtk-js)
 [![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
 ![npm-download](https://img.shields.io/npm/dm/vtk.js.svg)
-![npm-version-requirement](https://img.shields.io/badge/npm->=3.0.0-brightgreen.svg)
-![node-version-requirement](https://img.shields.io/badge/node->=5.0.0-brightgreen.svg)
+![npm-version-requirement](https://img.shields.io/badge/npm->=5.0.0-brightgreen.svg)
+![node-version-requirement](https://img.shields.io/badge/node->=8.0.0-brightgreen.svg)
 
 Introduction
 ============
@@ -15,8 +16,8 @@ graphics, volume rendering and visualization. VTK includes many
 advanced algorithms (e.g., surface reconstruction, implicit modelling,
 decimation) and rendering techniques (e.g., hardware-accelerated
 volume rendering, LOD control). The JavaScript implementation remain
-a subset of the actual C++ library but efforts will be made to easily 
-port or compile native VTK code into WebAssembly to better blend 
+a subset of the actual C++ library but efforts will be made to easily
+port or compile native VTK code into WebAssembly to better blend
 both world.
 
 The origin of VTK is with the textbook "The Visualization Toolkit, an
@@ -44,7 +45,7 @@ If you have found a bug:
    an entry in the [VTK Issue Tracker][].
 
 [CONTRIBUTING.md]: CONTRIBUTING.md
-[VTK Mailing Lists]: http://www.vtk.org/mailing-lists/
+[VTK Mailing Lists]: https://www.vtk.org/mailing-lists/
 [VTK Issue Tracker]: https://github.com/Kitware/vtk-js/issues
 
 Requirements
@@ -55,9 +56,9 @@ In general VTK tries to be as portable as possible; the specific configurations 
 vtk.js supports the following development environments:
 
 - Node 8+
-- NPM 5+
+- NPM 6+
 
-and we use [babel-preset-env](https://github.com/babel/babel/tree/master/packages/babel-preset-env) with the last 2 versions to browsers target. 
+and we use [@babel/preset-env](https://www.npmjs.com/package/@babel/preset-env) with the [defaults](https://github.com/Kitware/vtk-js/blob/master/.browserslistrc) set of [browsers target](https://browserl.ist/?q=defaults).
 But when built from source this could be adjusted to support any browser as long they provide WebGL.
 
 Documentation

@@ -22,7 +22,7 @@ export default function addRegistrationAPI(publicAPI, model) {
     proxy.setProxyManager(publicAPI);
 
     // Make sure we invoke event after the current execution path
-    setImmediate(() => {
+    macro.setImmediate(() => {
       publicAPI.invokeProxyRegistrationChange({
         action: 'register',
         proxyId: proxy.getProxyId(),
@@ -213,6 +213,7 @@ export default function addRegistrationAPI(publicAPI, model) {
       proxy.getRepresentations().forEach((repProxy) => {
         publicAPI.deleteProxy(repProxy);
       });
+      proxy.setContainer(null);
       unRegisterProxy(proxy);
       if (publicAPI.getActiveView() === proxy) {
         publicAPI.setActiveView(publicAPI.getViews()[0]);

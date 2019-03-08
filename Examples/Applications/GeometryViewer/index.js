@@ -6,6 +6,7 @@ import 'vtk.js/Sources/favicon';
 import macro from 'vtk.js/Sources/macro';
 import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
 import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
+import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
 import vtkColorMaps from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps';
 import vtkColorTransferFunction from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction';
 import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
@@ -19,7 +20,7 @@ import {
   ScalarMode,
 } from 'vtk.js/Sources/Rendering/Core/Mapper/Constants';
 
-import style from './GeometryViewer.mcss';
+import style from './GeometryViewer.module.css';
 import icon from '../../../Documentation/content/icon/favicon-96x96.png';
 
 let autoInit = true;
@@ -217,6 +218,7 @@ function createPipeline(fileName, fileContents) {
   const actor2 = vtkActor.newInstance();
   const scalars = source.getPointData().getScalars();
   const dataRange = [].concat(scalars ? scalars.getRange() : [0, 1]);
+  let activeArray = vtkDataArray;
 
   // --------------------------------------------------------------------
   // Color handling
@@ -295,9 +297,10 @@ function createPipeline(fileName, fileContents) {
     let scalarMode = ScalarMode.DEFAULT;
     const scalarVisibility = location.length > 0;
     if (scalarVisibility) {
-      const activeArray = source[`get${location}`]().getArrayByName(
+      const newArray = source[`get${location}`]().getArrayByName(
         colorByArrayName
       );
+      activeArray = newArray;
       const newDataRange = activeArray.getRange();
       dataRange[0] = newDataRange[0];
       dataRange[1] = newDataRange[1];
@@ -348,6 +351,11 @@ function createPipeline(fileName, fileContents) {
       } else {
         lut.setVectorModeToComponent();
         lut.setVectorComponent(Number(event.target.value));
+        const newDataRange = activeArray.getRange(Number(event.target.value));
+        dataRange[0] = newDataRange[0];
+        dataRange[1] = newDataRange[1];
+        lookupTable.setMappingRange(dataRange[0], dataRange[1]);
+        lut.updateRange();
       }
       renderWindow.render();
     }
@@ -422,7 +430,7 @@ export function load(container, options) {
     const progressCallback = (progressEvent) => {
       if (progressEvent.lengthComputable) {
         const percent = Math.floor(
-          100 * progressEvent.loaded / progressEvent.total
+          (100 * progressEvent.loaded) / progressEvent.total
         );
         progressContainer.innerHTML = `Loading ${percent}%`;
       } else {

@@ -144,9 +144,9 @@ function vtkGlyph3DMapper(publicAPI, model) {
           oArray.getTuple(i, orientation);
           switch (model.orientationMode) {
             case OrientationModes.ROTATION:
-              mat4.rotateZ(z, z, orientation[2] / 3.1415926);
-              mat4.rotateX(z, z, orientation[0] / 3.1415926);
-              mat4.rotateY(z, z, orientation[1] / 3.1415926);
+              mat4.rotateZ(z, z, orientation[2]);
+              mat4.rotateX(z, z, orientation[0]);
+              mat4.rotateY(z, z, orientation[1]);
               break;
 
             case OrientationModes.DIRECTION:
@@ -245,7 +245,7 @@ function vtkGlyph3DMapper(publicAPI, model) {
         model.arrayAccessMode,
         model.arrayId,
         model.colorByArrayName
-      );
+      ).scalars;
 
       if (!model.useLookupTableScalarRange) {
         publicAPI
@@ -274,7 +274,7 @@ function vtkGlyph3DMapper(publicAPI, model) {
         .getNumberOfValues() / 3;
 
     const pcount = {
-      points: mult * glyph.getPoints().getNumberOfValues() / 3,
+      points: (mult * glyph.getPoints().getNumberOfValues()) / 3,
       verts:
         mult *
         (glyph.getVerts().getNumberOfValues() -
@@ -326,6 +326,7 @@ export function extend(publicAPI, model, initialValues = {}) {
 
   macro.setGet(publicAPI, model, [
     'orient',
+    'orientationMode',
     'orientationArray',
     'scaleArray',
     'scaleFactor',

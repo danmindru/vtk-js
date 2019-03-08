@@ -24,9 +24,9 @@ function vtkProp(publicAPI, model) {
   };
 
   publicAPI.getNestedProps = () => null;
-  publicAPI.getActors = () => null;
-  publicAPI.getActors2D = () => null;
-  publicAPI.getVolumes = () => null;
+  publicAPI.getActors = () => [];
+  publicAPI.getActors2D = () => [];
+  publicAPI.getVolumes = () => [];
 
   publicAPI.pick = notImplemented('pick');
   publicAPI.hasKey = notImplemented('hasKey');
@@ -55,8 +55,7 @@ function vtkProp(publicAPI, model) {
   publicAPI.getSupportsSelection = () => false;
 
   publicAPI.getTextures = () => model.textures;
-  publicAPI.hasTexture = (texture) =>
-    !!model.textures.filter((item) => item === texture).length;
+  publicAPI.hasTexture = (texture) => model.textures.indexOf(texture) !== -1;
   publicAPI.addTexture = (texture) => {
     if (texture && !publicAPI.hasTexture(texture)) {
       model.textures = model.textures.concat(texture);
@@ -65,8 +64,8 @@ function vtkProp(publicAPI, model) {
   };
 
   publicAPI.removeTexture = (texture) => {
-    const newTextureList = model.textures.filter((item) => item === texture);
-    if (model.texture.length !== newTextureList.length) {
+    const newTextureList = model.textures.filter((item) => item !== texture);
+    if (model.textures.length !== newTextureList.length) {
       model.textures = newTextureList;
       publicAPI.modified();
     }

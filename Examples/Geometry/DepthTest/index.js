@@ -10,6 +10,7 @@ import vtkPixelSpaceCallbackMapper from 'vtk.js/Sources/Rendering/Core/PixelSpac
 import vtkRenderWindow from 'vtk.js/Sources/Rendering/Core/RenderWindow';
 import vtkRenderWindowInteractor from 'vtk.js/Sources/Rendering/Core/RenderWindowInteractor';
 import vtkRenderer from 'vtk.js/Sources/Rendering/Core/Renderer';
+import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/InteractorStyleTrackballCamera';
 import vtk from 'vtk.js/Sources/vtk';
 
 // Need polydata registered in the vtk factory
@@ -18,10 +19,10 @@ import 'vtk.js/Sources/Common/Core/DataArray';
 import 'vtk.js/Sources/Common/Core/StringArray';
 import 'vtk.js/Sources/Common/DataModel/PolyData';
 
-import style from './style.mcss';
+import style from './style.module.css';
 
 function affine(val, inMin, inMax, outMin, outMax) {
-  return (val - inMin) / (inMax - inMin) * (outMax - outMin) + outMin;
+  return ((val - inMin) / (inMax - inMin)) * (outMax - outMin) + outMin;
 }
 
 // ----------------------------------------------------------------------------
@@ -302,6 +303,8 @@ const interactor = vtkRenderWindowInteractor.newInstance();
 interactor.setView(openglRenderWindow);
 interactor.initialize();
 interactor.bindEvents(container);
+
+interactor.setInteractorStyle(vtkInteractorStyleTrackballCamera.newInstance());
 
 // Handle window resize
 function resize() {

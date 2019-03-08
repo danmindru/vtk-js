@@ -15,6 +15,8 @@ import vtkMouseCameraTrackballRotateManipulator from 'vtk.js/Sources/Interaction
 import vtkMouseCameraTrackballZoomManipulator from 'vtk.js/Sources/Interaction/Manipulators/MouseCameraTrackballZoomManipulator';
 import vtkMouseCameraTrackballZoomToMouseManipulator from 'vtk.js/Sources/Interaction/Manipulators/MouseCameraTrackballZoomToMouseManipulator';
 
+import vtkGestureCameraManipulator from 'vtk.js/Sources/Interaction/Manipulators/GestureCameraManipulator';
+
 import controlPanel from './controller.html';
 
 const { vtkDebugMacro } = macro;
@@ -70,6 +72,21 @@ const selectMap = {
   altMiddleButton: { button: 2, alt: true },
   altRightButton: { button: 3, alt: true },
   scrollMiddleButton: { scrollEnabled: true, dragEnabled: false },
+  shiftScrollMiddleButton: {
+    scrollEnabled: true,
+    dragEnabled: false,
+    shift: true,
+  },
+  controlScrollMiddleButton: {
+    scrollEnabled: true,
+    dragEnabled: false,
+    control: true,
+  },
+  altScrollMiddleButton: {
+    scrollEnabled: true,
+    dragEnabled: false,
+    alt: true,
+  },
 };
 
 const manipulatorFactory = {
@@ -101,6 +118,11 @@ function reassignManipulators() {
       interactorStyle.addMouseManipulator(manipulator);
     }
   });
+
+  // Always add gesture
+  interactorStyle.addGestureManipulator(
+    vtkGestureCameraManipulator.newInstance()
+  );
 }
 
 Object.keys(selectMap).forEach((name) => {

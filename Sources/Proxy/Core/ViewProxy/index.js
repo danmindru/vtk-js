@@ -172,10 +172,14 @@ function vtkViewProxy(publicAPI, model) {
   publicAPI.resize = () => {
     if (model.container) {
       const dims = model.container.getBoundingClientRect();
-      model.openglRenderWindow.setSize(
-        Math.max(10, Math.floor(dims.width)),
-        Math.max(10, Math.floor(dims.height))
-      );
+      if (dims.width === dims.height && dims.width === 0) {
+        return;
+      }
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      const width = Math.max(10, devicePixelRatio * Math.floor(dims.width));
+      const height = Math.max(10, devicePixelRatio * Math.floor(dims.height));
+      model.openglRenderWindow.setSize(width, height);
+      publicAPI.invokeResize({ width, height });
       publicAPI.renderLater();
     }
   };
@@ -301,10 +305,18 @@ function vtkViewProxy(publicAPI, model) {
   // --------------------------------------------------------------------------
 
   publicAPI.setAnimation = (enable, requester = publicAPI) => {
+    if (model.disableAnimation && enable) {
+      return;
+    }
     if (enable) {
       model.renderWindow.getInteractor().requestAnimation(requester);
     } else {
-      model.renderWindow.getInteractor().cancelAnimation(requester);
+      const skipWarning =
+        requester === publicAPI ||
+        `${requester}`.indexOf('ViewProxy.updateOrientation.') === 0;
+      model.renderWindow
+        .getInteractor()
+        .cancelAnimation(requester, skipWarning);
     }
   };
 
@@ -382,7 +394,6 @@ function vtkViewProxy(publicAPI, model) {
           const axisCorrectionIndex = availableAxes.find(
             (v) => Math.abs(deltaViewUp[v]) < EPSILON
           );
-          console.log('axisCorrectionIndex', axisCorrectionIndex);
           for (let i = 0; i < animateSteps; i++) {
             const newViewUp = [
               viewUp[0] + (i + 1) * deltaViewUp[0],
@@ -390,7 +401,7 @@ function vtkViewProxy(publicAPI, model) {
               viewUp[2] + (i + 1) * deltaViewUp[2],
             ];
             newViewUp[axisCorrectionIndex] = Math.sin(
-              Math.PI * i / (animateSteps - 1)
+              (Math.PI * i) / (animateSteps - 1)
             );
             animationStack.push({
               position: destPosition,
@@ -416,8 +427,20 @@ function vtkViewProxy(publicAPI, model) {
       }
     }
 
+    if (animationStack.length === 1) {
+      // update camera directly
+      model.camera.set(animationStack.pop());
+      model.renderer.resetCameraClippingRange();
+      if (model.interactor.getLightFollowCamera()) {
+        model.renderer.updateLightsGeometryToFollowCamera();
+      }
+      return Promise.resolve();
+    }
+
     return new Promise((resolve, reject) => {
-      publicAPI.setAnimation(true, publicAPI);
+      const now = performance.now().toString();
+      const animationRequester = `ViewProxy.updateOrientation.${now}`;
+      publicAPI.setAnimation(true, animationRequester);
       let intervalId = null;
       const consumeAnimationStack = () => {
         if (animationStack.length) {
@@ -434,7 +457,7 @@ function vtkViewProxy(publicAPI, model) {
           }
         } else {
           clearInterval(intervalId);
-          publicAPI.setAnimation(false, publicAPI);
+          publicAPI.setAnimation(false, animationRequester);
           resolve();
         }
       };
@@ -444,9 +467,13 @@ function vtkViewProxy(publicAPI, model) {
 
   // --------------------------------------------------------------------------
 
-  publicAPI.resetOrientation = () => {
-    publicAPI.updateOrientation(model.axis, model.orientation, model.viewUp);
-  };
+  publicAPI.resetOrientation = (animateSteps = 0) =>
+    publicAPI.updateOrientation(
+      model.axis,
+      model.orientation,
+      model.viewUp,
+      animateSteps
+    );
 
   // --------------------------------------------------------------------------
 
@@ -492,6 +519,7 @@ const DEFAULT_VALUES = {
   resetCameraOnFirstRender: true,
   presetToOrientationAxes: 'lps',
   orientationAxesType: 'arrow',
+  disableAnimation: false,
   axis: 1,
   orientation: 0,
   viewUp: [0, 0, 1],
@@ -503,7 +531,7 @@ function extend(publicAPI, model, initialValues = {}) {
   Object.assign(model, DEFAULT_VALUES, initialValues);
 
   macro.obj(publicAPI, model);
-  macro.setGet(publicAPI, model, ['name']);
+  macro.setGet(publicAPI, model, ['name', 'disableAnimation']);
   macro.get(publicAPI, model, [
     'annotationOpacity',
     'camera',
@@ -520,6 +548,7 @@ function extend(publicAPI, model, initialValues = {}) {
     'representations',
     'useParallelRendering',
   ]);
+  macro.event(publicAPI, model, 'Resize');
 
   // Object specific methods
   vtkViewProxy(publicAPI, model);

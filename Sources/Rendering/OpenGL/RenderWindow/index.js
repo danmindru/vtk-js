@@ -9,6 +9,7 @@ import { VtkDataTypes } from 'vtk.js/Sources/Common/Core/DataArray/Constants';
 import WebVRPolyfill from 'webvr-polyfill';
 
 const { vtkDebugMacro, vtkErrorMacro } = macro;
+const IS_CHROME = navigator.userAgent.indexOf('Chrome') !== -1;
 
 function checkRenderTargetSupport(gl, format, type) {
   // create temporary frame buffer and texture
@@ -52,6 +53,13 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
       model.canvas.setAttribute('width', model.size[0]);
       model.canvas.setAttribute('height', model.size[1]);
     }
+
+    // ImageStream size
+    if (model.viewStream) {
+      // If same size that's a NoOp
+      model.viewStream.setSize(model.size[0], model.size[1]);
+    }
+
     // Offscreen ?
     model.canvas.style.display = model.useOffScreen ? 'none' : 'block';
 
@@ -106,11 +114,17 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
 
   publicAPI.setContainer = (el) => {
     if (model.el && model.el !== el) {
-      // Remove canvas from previous container
-      if (model.canvas.parentNode === model.el) {
-        model.el.removeChild(model.canvas);
-      } else {
+      if (model.canvas.parentNode !== model.el) {
         vtkErrorMacro('Error: canvas parent node does not match container');
+      }
+
+      // Remove canvas from previous container
+      model.el.removeChild(model.canvas);
+
+      // If the renderer has previously added
+      // a background image, remove it from the DOM.
+      if (model.el.contains(model.bgImage)) {
+        model.el.removeChild(model.bgImage);
       }
     }
 
@@ -118,6 +132,12 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
       model.el = el;
       if (model.el) {
         model.el.appendChild(model.canvas);
+      }
+
+      // If the renderer is set to use a background
+      // image, attach it to the DOM.
+      if (model.useBackgroundImage) {
+        model.el.appendChild(model.bgImage);
       }
 
       // Trigger modified()
@@ -239,8 +259,6 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
     return pixels;
   };
 
-  publicAPI.get2DContext = () => model.canvas.getContext('2d');
-
   publicAPI.get3DContext = (
     options = { preserveDrawingBuffer: false, depth: true, alpha: true }
   ) => {
@@ -308,13 +326,16 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
   };
 
   publicAPI.startVR = () => {
+    model.oldCanvasSize = model.size.slice();
     if (model.vrDisplay.capabilities.canPresent) {
       model.vrDisplay
         .requestPresent([{ source: model.canvas }])
         .then(() => {
-          model.oldCanvasSize = model.size.slice();
-
-          if (model.el && model.vrDisplay.capabilities.hasExternalDisplay) {
+          if (
+            model.el &&
+            model.vrDisplay.capabilities.hasExternalDisplay &&
+            model.hideCanvasInVR
+          ) {
             model.el.style.display = 'none';
           }
           if (model.queryVRSize) {
@@ -336,10 +357,18 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
           model.vrFrameData = new VRFrameData();
           model.renderable.getInteractor().switchToVRAnimation();
 
-          publicAPI.vrRender();
+          model.vrSceneFrame = model.vrDisplay.requestAnimationFrame(
+            publicAPI.vrRender
+          );
+          // If Broswer is chrome we need to request animation again to canvas update
+          if (IS_CHROME) {
+            model.vrSceneFrame = model.vrDisplay.requestAnimationFrame(
+              publicAPI.vrRender
+            );
+          }
         })
         .catch(() => {
-          console.log('failed to requestPresent');
+          console.error('failed to requestPresent');
         });
     } else {
       vtkErrorMacro('vrDisplay is not connected');
@@ -364,6 +393,10 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
   };
 
   publicAPI.vrRender = () => {
+    // If not presenting for any reason, we do not submit frame
+    if (!model.vrDisplay.isPresenting) {
+      return;
+    }
     model.renderable.getInteractor().updateGamepads(model.vrDisplay.displayId);
     model.vrSceneFrame = model.vrDisplay.requestAnimationFrame(
       publicAPI.vrRender
@@ -487,8 +520,63 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
     }
   };
 
+  publicAPI.setBackgroundImage = (img) => {
+    model.bgImage.src = img.src;
+  };
+
+  publicAPI.setUseBackgroundImage = (value) => {
+    model.useBackgroundImage = value;
+
+    // Add or remove the background image from the
+    // DOM as specified.
+    if (model.useBackgroundImage && !model.el.contains(model.bgImage)) {
+      model.el.appendChild(model.bgImage);
+    } else if (!model.useBackgroundImage && model.el.contains(model.bgImage)) {
+      model.el.removeChild(model.bgImage);
+    }
+  };
+
   function getCanvasDataURL(format = model.imageFormat) {
-    return model.canvas.toDataURL(format);
+    // Copy current canvas to not modify the original
+    const temporaryCanvas = document.createElement('canvas');
+    const temporaryContext = temporaryCanvas.getContext('2d');
+    temporaryCanvas.width = model.canvas.width;
+    temporaryCanvas.height = model.canvas.height;
+    temporaryContext.drawImage(model.canvas, 0, 0);
+
+    // Get current client rect to place canvas
+    const mainBoundingClientRect = model.canvas.getBoundingClientRect();
+
+    const renderWindow = model.renderable;
+    const renderers = renderWindow.getRenderers();
+    renderers.forEach((renderer) => {
+      const viewProps = renderer.getViewProps();
+      viewProps.forEach((viewProp) => {
+        // Check if the prop has a container that should have canvas
+        if (viewProp.getContainer) {
+          const container = viewProp.getContainer();
+          const canvasList = container.getElementsByTagName('canvas');
+          // Go throughout all canvas and copy it into temporary main canvas
+          for (let i = 0; i < canvasList.length; i++) {
+            const currentCanvas = canvasList[i];
+            const boundingClientRect = currentCanvas.getBoundingClientRect();
+            const newXPosition =
+              boundingClientRect.x - mainBoundingClientRect.x;
+            const newYPosition =
+              boundingClientRect.y - mainBoundingClientRect.y;
+            temporaryContext.drawImage(
+              currentCanvas,
+              newXPosition,
+              newYPosition
+            );
+          }
+        }
+      });
+    });
+
+    const screenshot = temporaryCanvas.toDataURL(format);
+    temporaryCanvas.remove();
+    publicAPI.invokeImageReady(screenshot);
   }
 
   publicAPI.captureNextImage = (format = 'image/png') => {
@@ -496,12 +584,12 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
       return null;
     }
     model.imageFormat = format;
-    const previous = model.notifyImageReady;
-    model.notifyImageReady = true;
+    const previous = model.notifyStartCaptureImage;
+    model.notifyStartCaptureImage = true;
 
     return new Promise((resolve, reject) => {
       const subscription = publicAPI.onImageReady((imageURL) => {
-        model.notifyImageReady = previous;
+        model.notifyStartCaptureImage = previous;
         subscription.unsubscribe();
         resolve(imageURL);
       });
@@ -919,8 +1007,8 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
         model.renderPasses[index].traverse(publicAPI, null);
       }
     }
-    if (model.notifyImageReady) {
-      publicAPI.invokeImageReady(getCanvasDataURL());
+    if (model.notifyStartCaptureImage) {
+      getCanvasDataURL();
     }
   };
 
@@ -951,6 +1039,38 @@ function vtkOpenGLRenderWindow(publicAPI, model) {
       model.cullFaceEnabled = true;
     }
   };
+
+  publicAPI.setViewStream = (stream) => {
+    if (model.viewStream === stream) {
+      return false;
+    }
+    if (model.subscription) {
+      model.subscription.unsubscribe();
+      model.subscription = null;
+    }
+    model.viewStream = stream;
+    if (model.viewStream) {
+      // Force background to be transparent + render
+      const mainRenderer = model.renderable.getRenderers()[0];
+      mainRenderer.getBackgroundByReference()[3] = 0;
+
+      // Enable display of the background image
+      publicAPI.setUseBackgroundImage(true);
+
+      // Bind to remote stream
+      model.subscription = model.viewStream.onImageReady((e) =>
+        publicAPI.setBackgroundImage(e.image)
+      );
+      model.viewStream.setSize(model.size[0], model.size[1]);
+      model.viewStream.invalidateCache();
+      model.viewStream.render();
+
+      publicAPI.modified();
+    }
+    return true;
+  };
+
+  publicAPI.delete = macro.chain(publicAPI.delete, publicAPI.setViewStream);
 }
 
 // ----------------------------------------------------------------------------
@@ -970,14 +1090,17 @@ const DEFAULT_VALUES = {
   textureUnitManager: null,
   textureResourceIds: null,
   renderPasses: [],
-  notifyImageReady: false,
+  notifyStartCaptureImage: false,
   webgl2: false,
   defaultToWebgl2: true, // attempt webgl2 on by default
   vrResolution: [2160, 1200],
   queryVRSize: false,
+  hideCanvasInVR: true,
   activeFramebuffer: null,
   vrDisplay: null,
   imageFormat: 'image/png',
+  useOffScreen: false,
+  useBackgroundImage: false,
 };
 
 // ----------------------------------------------------------------------------
@@ -989,12 +1112,25 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.canvas = document.createElement('canvas');
   model.canvas.style.width = '100%';
 
+  // Create internal bgImage
+  model.bgImage = new Image();
+  model.bgImage.style.position = 'absolute';
+  model.bgImage.style.left = '0';
+  model.bgImage.style.top = '0';
+  model.bgImage.style.width = '100%';
+  model.bgImage.style.height = '100%';
+  model.bgImage.style.zIndex = '-1';
+
   model.textureResourceIds = new Map();
 
   // Inheritance
   vtkViewNode.extend(publicAPI, model, initialValues);
 
   model.myFactory = vtkOpenGLViewNodeFactory.newInstance();
+  /* eslint-disable no-use-before-define */
+  model.myFactory.registerOverride('vtkRenderWindow', newInstance);
+  /* eslint-enable no-use-before-define */
+
   model.shaderCache = vtkShaderCache.newInstance();
   model.shaderCache.setOpenGLRenderWindow(publicAPI);
 
@@ -1010,6 +1146,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'textureUnitManager',
     'webgl2',
     'vrDisplay',
+    'useBackgroundImage',
   ]);
 
   macro.setGet(publicAPI, model, [
@@ -1017,10 +1154,12 @@ export function extend(publicAPI, model, initialValues = {}) {
     'context',
     'canvas',
     'renderPasses',
-    'notifyImageReady',
+    'notifyStartCaptureImage',
     'defaultToWebgl2',
     'cursor',
     'queryVRSize',
+    'hideCanvasInVR',
+    'useOffScreen',
     // might want to make this not call modified as
     // we change the active framebuffer a lot. Or maybe
     // only mark modified if the size or depth

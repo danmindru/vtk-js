@@ -68,6 +68,14 @@ export function vtkWarningMacro(...args) {
   loggerFunctions.warn(...args);
 }
 
+const ERROR_ONCE_MAP = {};
+export function vtkOnceErrorMacro(str) {
+  if (!ERROR_ONCE_MAP[str]) {
+    loggerFunctions.error(str);
+    ERROR_ONCE_MAP[str] = true;
+  }
+}
+
 // ----------------------------------------------------------------------------
 // TypedArray
 // ----------------------------------------------------------------------------
@@ -153,6 +161,14 @@ function getStateArrayMapFunc(item) {
 }
 
 // ----------------------------------------------------------------------------
+// setImmediate
+// ----------------------------------------------------------------------------
+
+export function setImmediateVTK(fn) {
+  setTimeout(fn, 0);
+}
+
+// ----------------------------------------------------------------------------
 // vtkObject: modified(), onModified(callback), delete()
 // ----------------------------------------------------------------------------
 
@@ -227,7 +243,7 @@ export function obj(publicAPI = {}, model = {}) {
     let ret = false;
     Object.keys(map).forEach((name) => {
       const fn = noFunction ? null : publicAPI[`set${capitalize(name)}`];
-      if (fn && Array.isArray(map[name])) {
+      if (fn && Array.isArray(map[name]) && fn.length > 1) {
         ret = fn(...map[name]) || ret;
       } else if (fn) {
         ret = fn(map[name]) || ret;
@@ -570,10 +586,11 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
       return;
     }
     if (port >= model.numberOfInputs) {
-      let msg = `algorithm ${publicAPI.getClassName()} only has `;
-      msg += `${model.numberOfInputs}`;
-      msg += ' input ports. To add more input ports, use addInputData()';
-      vtkErrorMacro(msg);
+      vtkErrorMacro(
+        `algorithm ${publicAPI.getClassName()} only has ${
+          model.numberOfInputs
+        } input ports. To add more input ports, use addInputData()`
+      );
       return;
     }
     if (model.inputData[port] !== dataset || model.inputConnection[port]) {
@@ -837,6 +854,7 @@ export function newInstance(extend, className) {
     const model = {};
     const publicAPI = {};
     extend(publicAPI, model, initialValues);
+
     return Object.freeze(publicAPI);
   };
 
@@ -1269,7 +1287,7 @@ export function proxy(publicAPI, model) {
       }
     }
   }
-  setImmediate(registerLinks);
+  setImmediateVTK(registerLinks);
 }
 
 // ----------------------------------------------------------------------------
@@ -1557,15 +1575,15 @@ export function normalizeWheel(wheelEvent) {
 // ----------------------------------------------------------------------------
 
 export default {
-  EVENT_ABORT,
-  VOID,
-  TYPED_ARRAYS,
   algo,
   capitalize,
-  uncapitalize,
   chain,
+  debounce,
   enumToString,
   event,
+  EVENT_ABORT,
+  formatBytesToProperUnit,
+  formatNumbersWithThousandSeparator,
   get,
   getArray,
   getCurrentGlobalMTime,
@@ -1573,25 +1591,27 @@ export default {
   isVtkObject,
   keystore,
   newInstance,
+  normalizeWheel,
   obj,
+  proxy,
+  proxyPropertyMapping,
+  proxyPropertyState,
   safeArrays,
   set,
   setArray,
   setGet,
   setGetArray,
+  setImmediate: setImmediateVTK,
   setLoggerFunction,
+  throttle,
   traverseInstanceTree,
+  TYPED_ARRAYS,
+  uncapitalize,
+  VOID,
   vtkDebugMacro,
   vtkErrorMacro,
   vtkInfoMacro,
   vtkLogMacro,
+  vtkOnceErrorMacro,
   vtkWarningMacro,
-  debounce,
-  throttle,
-  proxy,
-  proxyPropertyMapping,
-  proxyPropertyState,
-  formatBytesToProperUnit,
-  formatNumbersWithThousandSeparator,
-  normalizeWheel,
 };

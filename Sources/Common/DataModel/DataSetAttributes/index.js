@@ -105,10 +105,13 @@ function vtkDataSetAttributes(publicAPI, model) {
       model[`active${attType}`] = arrayIdx;
       publicAPI.modified();
       return arrayIdx;
-    } else if (arrayIdx === -1) {
+    }
+
+    if (arrayIdx === -1) {
       model[`active${attType}`] = arrayIdx;
       publicAPI.modified();
     }
+
     return -1;
   };
 
@@ -210,6 +213,16 @@ function vtkDataSetAttributes(publicAPI, model) {
       }
     });
   }
+
+  const superShallowCopy = publicAPI.shallowCopy;
+  publicAPI.shallowCopy = (other, debug) => {
+    superShallowCopy(other, debug);
+    model.arrays = other.getArrays().map((arr) => {
+      const arrNew = arr.newClone();
+      arrNew.shallowCopy(arr, debug);
+      return { data: arrNew };
+    });
+  };
 }
 
 // ----------------------------------------------------------------------------
