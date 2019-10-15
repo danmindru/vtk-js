@@ -38,7 +38,7 @@ const TYPED_ARRAY = {
   Int64: Int32Array, // Not supported with JavaScript will cause error in binary
   UInt64: Uint32Array, // Not supported with JavaScript will cause error in binary
   Float32: Float32Array,
-  Float64: Float64Array,
+  Float64: Float64Array
 };
 
 // ----------------------------------------------------------------------------
@@ -53,7 +53,7 @@ const TYPED_ARRAY_BYTES = {
   Int64: 8, // Not supported with JavaScript will cause error in binary
   UInt64: 8, // Not supported with JavaScript will cause error in binary
   Float32: 4,
-  Float64: 8,
+  Float64: 8
 };
 
 // ----------------------------------------------------------------------------
@@ -495,6 +495,79 @@ function vtkXMLReader(publicAPI, model) {
         );
         return false;
       }
+    }
+
+    // parse root FieldData
+    // TODO: what's the proper way to do this?
+    if (rootElem.querySelector('FieldData')) {
+      const rootFieldDataElem = rootElem.querySelector('FieldData');
+      const rootDataArrayChildren = [...rootFieldDataElem.querySelectorAll('DataArray')];
+      const rootArrayChildren = [...rootFieldDataElem.querySelectorAll('Array')];
+
+      const getAttribute = (node) =>
+        (attributeName) => node.getAttribute(attributeName);
+
+      const uncompressedRootFieldData = rootArrayChildren
+        .map((node) => {
+          const GetAttribute = getAttribute(node);
+
+          return {
+            values: node.innerHTML.trim(),
+            type: GetAttribute('type'),
+            name: GetAttribute('Name')
+          }
+        })
+        .map(({ values, ...rest }) => {
+          const dataArray = toByteArray(values);
+          const header = readerHeader(dataArray, rest.type);
+
+
+          const nbBlocks = header[1];
+          let compressedOffset =
+            dataArray.length -
+            (header.reduce((a, b) => a + b, 0) -
+              (header[0] + header[1] + header[2] + header[3]));
+
+          const buffer = new ArrayBuffer(header[2] * (nbBlocks - 1) + header[3]);
+
+          // uncompressed buffer
+          const uncompressed = new Uint8Array(buffer);
+          const output = {
+            offset: 0,
+            uint8: uncompressed,
+          };
+
+          for (let i = 0; i < nbBlocks; i++) {
+            const blockSize = header[4 + i];
+            const compressedBlock = new Uint8Array(
+              dataArray.buffer,
+              compressedOffset,
+              blockSize
+            );
+            uncompressBlock(compressedBlock, output);
+            compressedOffset += blockSize;
+          }
+
+          const decoder = new TextDecoder('utf8');
+
+          return {
+            ...rest,
+            values: decoder.decode(output.uint8)
+          };
+        });
+
+      model.rootFieldData = [
+        ...rootDataArrayChildren.map((dataArray) => {
+          return processDataArray(
+            dataArray.getAttribute('NumberOfTuples'),
+            dataArray,
+            compressor,
+            byteOrder,
+            headerType
+          );
+        }),
+        ...uncompressedRootFieldData
+      ]
     }
 
     publicAPI.parseXML(rootElem, type, compressor, byteOrder, headerType);
